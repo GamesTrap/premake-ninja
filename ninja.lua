@@ -225,8 +225,12 @@ local function getcflags(toolset, cfg, filecfg)
 	local cppflags = ninja.list(toolset.getcppflags(filecfg))
 	local cflags = ninja.list(toolset.getcflags(filecfg))
 	local defines = ninja.list(table.join(toolset.getdefines(filecfg.defines), toolset.getundefines(filecfg.undefines)))
-	local includes = ninja.list(toolset.getincludedirs(cfg, filecfg.includedirs, filecfg.externalincludedirs, filecfg.frameworkdirs, filecfg.includedirsafter))
-	local forceincludes = ninja.list(toolset.getforceincludes(cfg))
+	-- Ninja requires that all files are relative to the build dir
+		local tmpCfgProjectDir = cfg.project.location
+		cfg.project.location = cfg.workspace.location
+		local includes = ninja.list(toolset.getincludedirs(cfg, filecfg.includedirs, filecfg.externalincludedirs, filecfg.frameworkdirs, filecfg.includedirsafter))
+		local forceincludes = ninja.list(toolset.getforceincludes(cfg))
+		cfg.project.location = tmpCfgProjectDir
 
 	return buildopt .. cppflags .. cflags .. defines .. includes .. forceincludes
 end
@@ -236,8 +240,12 @@ local function getcxxflags(toolset, cfg, filecfg)
 	local cppflags = ninja.list(toolset.getcppflags(filecfg))
 	local cxxflags = ninja.list(toolset.getcxxflags(filecfg))
 	local defines = ninja.list(table.join(toolset.getdefines(filecfg.defines), toolset.getundefines(filecfg.undefines)))
-	local includes = ninja.list(toolset.getincludedirs(cfg, filecfg.includedirs, filecfg.externalincludedirs, filecfg.frameworkdirs, filecfg.includedirsafter))
-	local forceincludes = ninja.list(toolset.getforceincludes(cfg))
+	-- Ninja requires that all files are relative to the build dir
+		local tmpCfgProjectDir = cfg.project.location
+		cfg.project.location = cfg.workspace.location
+		local includes = ninja.list(toolset.getincludedirs(cfg, filecfg.includedirs, filecfg.externalincludedirs, filecfg.frameworkdirs, filecfg.includedirsafter))
+		local forceincludes = ninja.list(toolset.getforceincludes(cfg))
+		cfg.project.location = tmpCfgProjectDir
 	return buildopt .. cppflags .. cxxflags .. defines .. includes .. forceincludes
 end
 
@@ -253,7 +261,11 @@ end
 
 local function getresflags(toolset, cfg, filecfg)
 	local defines = ninja.list(toolset.getdefines(table.join(filecfg.defines, filecfg.resdefines)))
-	local includes = ninja.list(toolset.getincludedirs(cfg, table.join(filecfg.externalincludedirs, filecfg.includedirsafter, filecfg.includedirs, filecfg.resincludedirs), {}, {}, {}))
+	-- Ninja requires that all files are relative to the build dir
+		local tmpCfgProjectDir = cfg.project.location
+		cfg.project.location = cfg.workspace.location
+		local includes = ninja.list(toolset.getincludedirs(cfg, table.join(filecfg.externalincludedirs, filecfg.includedirsafter, filecfg.includedirs, filecfg.resincludedirs), {}, {}, {}))
+		cfg.project.location = tmpCfgProjectDir
 	local options = ninja.list(cfg.resoptions)
 
 	return defines .. includes .. options
