@@ -439,7 +439,7 @@ local function compilation_rules(cfg, toolset, pch)
 			p.outln("")
 		else
 			p.outln("rule link")
-			p.outln("  command = " .. link .. " $in" .. ninja.list(ninja.shesc(toolset.getlinks(cfg, true))) .. " /link" .. all_ldflags .. " /nologo /out:$out")
+			p.outln("  command = " .. link .. " $in" .. ninja.list(ninja.shesc(pretranslatePaths(toolset.getlinks(cfg, true), cfg))) .. " /link" .. all_ldflags .. " /nologo /out:$out")
 			p.outln("  description = link $out")
 			p.outln("")
 		end
@@ -480,7 +480,7 @@ local function compilation_rules(cfg, toolset, pch)
 		else
 			local groups = iif(cfg.linkgroups == premake.ON, {"-Wl,--start-group ", " -Wl,--end-group"}, {"", ""})
 			p.outln("rule link")
-			p.outln("  command = " .. link .. " -o $out " .. groups[1] .. "$in" .. ninja.list(ninja.shesc(toolset.getlinks(cfg, true, true))) .. all_ldflags .. groups[2])
+			p.outln("  command = " .. link .. " -o $out " .. groups[1] .. "$in" .. ninja.list(ninja.shesc(pretranslatePaths(toolset.getlinks(cfg, true, true), cfg))) .. all_ldflags .. groups[2])
 			p.outln("  description = link $out")
 			p.outln("")
 		end
