@@ -652,6 +652,15 @@ function ninja.generateProjectCfg(cfg)
 	if cfg.characterset == nil then
 		cfg.characterset = "Default"
 	end
+	if cfg.entrypoint == nil then
+		if cfg.kind == "WindowedApp" then -- Use WinMain()
+			cfg.entrypoint = "WinMainCRTStartup"
+		elseif cfg.kind == "SharedLib" then -- Use DllMain()
+			cfg.entrypoint = "_DllMainCRTStartup"
+		elseif cfg.kind == "ConsoleApp" then -- Use main()
+			cfg.entrypoint = "mainCRTStartup"
+		end
+	end
 
 	p.outln("# project build file")
 	p.outln("# generated with premake ninja")
