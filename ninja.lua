@@ -240,7 +240,7 @@ local function getcflags(toolset, cfg, filecfg)
 	local cflags = ninja.list(toolset.getcflags(filecfg)) --Note MSVC is missing the correct cdialect
 
 	local MSVCcdialect = ""
-	if toolset == p.tools.msc then
+	if toolset == p.tools.msc and ninja.MSVCCPPDialects[cfg.cppdialect] ~= nil then
 		MSVCcdialect = " " .. ninja.MSVCCDialects[cfg.cdialect] .. " "
 	end
 
@@ -261,7 +261,7 @@ local function getcxxflags(toolset, cfg, filecfg)
 	local cxxflags = ninja.list(toolset.getcxxflags(filecfg)) --Note MSVC is missing the correct cppdialect
 
 	local MSVCcppdialect = ""
-	if toolset == p.tools.msc then
+	if toolset == p.tools.msc and ninja.MSVCCPPDialects[cfg.cppdialect] ~= nul then
 		MSVCcppdialect = " " .. ninja.MSVCCPPDialects[cfg.cppdialect] .. " "
 	end
 
