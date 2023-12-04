@@ -37,7 +37,7 @@ jobs:
         rm -Rf premake-build
 
     - name: install ninja
-      uses: seanmiddleditch/gha-setup-ninja@v3
+      uses: seanmiddleditch/gha-setup-ninja@v4
 
     - name: Versions
       run: |
