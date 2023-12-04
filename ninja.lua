@@ -244,7 +244,7 @@ local function getcflags(toolset, cfg, filecfg)
 		MSVCcdialect = " " .. ninja.MSVCCDialects[cfg.cdialect] .. " "
 	end
 
-	local defines = ninja.list(table.join(toolset.getdefines(filecfg.defines), toolset.getundefines(filecfg.undefines)))
+	local defines = ninja.list(table.join(toolset.getdefines(filecfg.defines, filecfg), toolset.getundefines(filecfg.undefines)))
 	-- Ninja requires that all files are relative to the build dir
 		local tmpCfgProjectDir = cfg.project.location
 		cfg.project.location = cfg.workspace.location
@@ -265,7 +265,7 @@ local function getcxxflags(toolset, cfg, filecfg)
 		MSVCcppdialect = " " .. ninja.MSVCCPPDialects[cfg.cppdialect] .. " "
 	end
 
-	local defines = ninja.list(table.join(toolset.getdefines(filecfg.defines), toolset.getundefines(filecfg.undefines)))
+	local defines = ninja.list(table.join(toolset.getdefines(filecfg.defines, filecfg), toolset.getundefines(filecfg.undefines)))
 	-- Ninja requires that all files are relative to the build dir
 		local tmpCfgProjectDir = cfg.project.location
 		cfg.project.location = cfg.workspace.location
@@ -292,7 +292,7 @@ local function getldflags(toolset, cfg)
 end
 
 local function getresflags(toolset, cfg, filecfg)
-	local defines = ninja.list(toolset.getdefines(table.join(filecfg.defines, filecfg.resdefines)))
+	local defines = ninja.list(toolset.getdefines(table.join(filecfg.defines, filecfg.resdefines), filecfg))
 	-- Ninja requires that all files are relative to the build dir
 		local tmpCfgProjectDir = cfg.project.location
 		cfg.project.location = cfg.workspace.location
@@ -644,6 +644,9 @@ function ninja.generateProjectCfg(cfg)
 
 	if cfg.externalwarnings == nil then
 		cfg.externalwarnings = "Default"
+	end
+	if cfg.characterset == nil then
+		cfg.characterset = "Default"
 	end
 
 	p.outln("# project build file")
