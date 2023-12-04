@@ -283,7 +283,7 @@ local function prebuild_rule(cfg)
 		if cfg.prebuildmessage then
 			commands = {os.translateCommandsAndPaths("{ECHO} " .. cfg.prebuildmessage, cfg.workspace.basedir, cfg.workspace.location)}
 		end
-		commands = table.join(commands, os.translateCommandsAndPaths(cfg.prebuildcommands, cfg.workspace.basedir, cfg.workspace.location))
+		commands = table.join(commands, os.translateCommandsAndPaths(pretranslatePaths(cfg.prebuildcommands, cfg), cfg.workspace.basedir, cfg.workspace.location))
 		if (#commands > 1) then
 			commands = 'sh -c ' .. ninja.quote(table.implode(commands,"","",";"))
 		else
@@ -302,7 +302,7 @@ local function prelink_rule(cfg)
 		if cfg.prelinkmessage then
 			commands = {os.translateCommandsAndPaths("{ECHO} " .. cfg.prelinkmessage, cfg.workspace.basedir, cfg.workspace.location)}
 		end
-		commands = table.join(commands, os.translateCommandsAndPaths(cfg.prelinkcommands, cfg.workspace.basedir, cfg.workspace.location))
+		commands = table.join(commands, os.translateCommandsAndPaths(pretranslatePaths(cfg.prelinkcommands, cfg), cfg.workspace.basedir, cfg.workspace.location))
 		if (#commands > 1) then
 			commands = 'sh -c ' .. ninja.quote(table.implode(commands,"","",";"))
 		else
@@ -315,13 +315,54 @@ local function prelink_rule(cfg)
 	end
 end
 
+local function stringReplace(str, match, replacement)
+	local function regexEscape(str)
+		return str:gsub("[%(%)%.%%%+%-%*%?%[%^%$%]]", "%%%1")
+	end
+
+	return str:gsub(regexEscape(match), replacement:gsub("%%", "%%%%"))
+end
+
+local strMagic = "([%^%$%(%)%%%.%[%]%*%+%-%?])" -- UTF-8 replacement for "(%W)"
+
+-- Hide magic pattern symbols  ^ $ ( ) % . [ ] * + - ?
+local function stringPlain(strTxt)
+	-- Prefix every magic pattern character with a % escape character,
+	-- where %% is the % escape, and %1 is the original character capture.
+	strTxt = tostring(strTxt or ""):gsub(strMagic,"%%%1")
+	return strTxt
+end
+
+-- replace is plain text version of string.gsub()
+local function stringReplace(strTxt,strOld,strNew,intNum)
+	strOld = tostring(strOld or ""):gsub(strMagic,"%%%1")  -- Hide magic pattern symbols
+	return tostring(strTxt or ""):gsub(strOld,function() return strNew end,tonumber(intNum))  -- Hide % capture symbols
+end
+
+local function pretranslatePaths(cmds, cfg)
+	for i = 1, #cmds do
+		local cmdCopy = cmds[i]
+
+		for v in string.gmatch(cmds[i], "%.%./[%w-._/\\]+") do
+			local correctedPath = path.getabsolute(v, cfg.project.location)
+			correctedPath = path.getrelative(cfg.workspace.location, correctedPath)
+
+			cmdCopy = stringReplace(cmdCopy, v, correctedPath, 1) --Replace path with path based on build dir
+		end
+
+		cmds[i] = cmdCopy
+	end
+
+	return cmds
+end
+
 local function postbuild_rule(cfg)
 	if #cfg.postbuildcommands > 0 or cfg.postbuildmessage then
 		local commands = {}
 		if cfg.postbuildmessage then
 			commands = {os.translateCommandsAndPaths("{ECHO} " .. cfg.postbuildmessage, cfg.workspace.basedir, cfg.workspace.location)}
 		end
-		commands = table.join(commands, os.translateCommandsAndPaths(cfg.postbuildcommands, cfg.workspace.basedir, cfg.workspace.location))
+		commands = table.join(commands, os.translateCommandsAndPaths(pretranslatePaths(cfg.postbuildcommands, cfg), cfg.workspace.basedir, cfg.workspace.location))
 		if (#commands > 1) then
 			commands = 'sh -c ' .. ninja.quote(table.implode(commands,"","",";"))
 		else
@@ -474,7 +515,7 @@ local function custom_command_build(prj, cfg, filecfg, filename, file_dependenci
 	if filecfg.buildmessage then
 		commands = {os.translateCommandsAndPaths("{ECHO} " .. filecfg.buildmessage, prj.workspace.basedir, prj.workspace.location)}
 	end
-	commands = table.join(commands, os.translateCommandsAndPaths(filecfg.buildcommands, prj.workspace.basedir, prj.workspace.location))
+	commands = table.join(commands, os.translateCommandsAndPaths(pretranslatePaths(filecfg.buildcommands, cfg), prj.workspace.basedir, prj.workspace.location))
 	if (#commands > 1) then
 		commands = 'sh -c ' .. ninja.quote(table.implode(commands,"","",";"))
 	else
