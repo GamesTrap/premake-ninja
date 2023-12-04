@@ -239,8 +239,8 @@ local function getcflags(toolset, cfg, filecfg)
 	local cppflags = ninja.list(toolset.getcppflags(filecfg))
 	local cflags = ninja.list(toolset.getcflags(filecfg)) --Note MSVC is missing the correct cdialect
 
-	local MSVCcdialect = ""
-	if toolset == p.tools.msc and ninja.MSVCCDialects[cfg.cdialect] ~= nil then
+	local MSVCcdialect
+	if toolset == p.tools.msc then
 		MSVCcdialect = " " .. ninja.MSVCCDialects[cfg.cdialect] .. " "
 	end
 
@@ -260,8 +260,8 @@ local function getcxxflags(toolset, cfg, filecfg)
 	local cppflags = ninja.list(toolset.getcppflags(filecfg))
 	local cxxflags = ninja.list(toolset.getcxxflags(filecfg)) --Note MSVC is missing the correct cppdialect
 
-	local MSVCcppdialect = ""
-	if toolset == p.tools.msc and ninja.MSVCCPPDialects[cfg.cppdialect] ~= nil then
+	local MSVCcppdialect
+	if toolset == p.tools.msc then
 		MSVCcppdialect = " " .. ninja.MSVCCPPDialects[cfg.cppdialect] .. " "
 	end
 
@@ -641,6 +641,10 @@ function ninja.generateProjectCfg(cfg)
 
   -- Some toolset fixes
 	cfg.gccprefix = cfg.gccprefix or ""
+
+	if cfg.externalwarnings == nil then
+		cfg.externalwarnings = "Default"
+	end
 
 	p.outln("# project build file")
 	p.outln("# generated with premake ninja")
