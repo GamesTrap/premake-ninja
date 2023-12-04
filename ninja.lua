@@ -220,10 +220,30 @@ local function getFileDependencies(cfg)
 	return dependencies
 end
 
+ninja.MSVCCDialects =
+{
+	["C11"] = "/std:c11",
+	["C17"] = "/std:c17"
+}
+
+ninja.MSVCCPPDialects =
+{
+	["C++14"] = "/std:c++14",
+	["C++17"] = "/std:c++17",
+	["C++20"] = "/std:c++20",
+	["C++latest"] = "/std:c++latest"
+}
+
 local function getcflags(toolset, cfg, filecfg)
 	local buildopt = ninja.list(filecfg.buildoptions)
 	local cppflags = ninja.list(toolset.getcppflags(filecfg))
-	local cflags = ninja.list(toolset.getcflags(filecfg))
+	local cflags = ninja.list(toolset.getcflags(filecfg)) --Note MSVC is missing the correct cdialect
+
+	local MSVCcdialect
+	if toolset == p.tools.msc then
+		MSVCcdialect = " " .. ninja.MSVCCDialects[cfg.cdialect] .. " "
+	end
+
 	local defines = ninja.list(table.join(toolset.getdefines(filecfg.defines), toolset.getundefines(filecfg.undefines)))
 	-- Ninja requires that all files are relative to the build dir
 		local tmpCfgProjectDir = cfg.project.location
@@ -232,13 +252,19 @@ local function getcflags(toolset, cfg, filecfg)
 		local forceincludes = ninja.list(toolset.getforceincludes(cfg))
 		cfg.project.location = tmpCfgProjectDir
 
-	return buildopt .. cppflags .. cflags .. defines .. includes .. forceincludes
+	return buildopt .. cppflags .. cflags .. MSVCcdialect .. defines .. includes .. forceincludes
 end
 
 local function getcxxflags(toolset, cfg, filecfg)
 	local buildopt = ninja.list(filecfg.buildoptions)
 	local cppflags = ninja.list(toolset.getcppflags(filecfg))
-	local cxxflags = ninja.list(toolset.getcxxflags(filecfg))
+	local cxxflags = ninja.list(toolset.getcxxflags(filecfg)) --Note MSVC is missing the correct cppdialect
+
+	local MSVCcppdialect
+	if toolset == p.tools.msc then
+		MSVCcppdialect = " " .. ninja.MSVCCPPDialects[cfg.cppdialect] .. " "
+	end
+
 	local defines = ninja.list(table.join(toolset.getdefines(filecfg.defines), toolset.getundefines(filecfg.undefines)))
 	-- Ninja requires that all files are relative to the build dir
 		local tmpCfgProjectDir = cfg.project.location
@@ -246,7 +272,7 @@ local function getcxxflags(toolset, cfg, filecfg)
 		local includes = ninja.list(toolset.getincludedirs(cfg, filecfg.includedirs, filecfg.externalincludedirs, filecfg.frameworkdirs, filecfg.includedirsafter))
 		local forceincludes = ninja.list(toolset.getforceincludes(cfg))
 		cfg.project.location = tmpCfgProjectDir
-	return buildopt .. cppflags .. cxxflags .. defines .. includes .. forceincludes
+	return buildopt .. cppflags .. cxxflags .. MSVCcppdialect .. defines .. includes .. forceincludes
 end
 
 local function getldflags(toolset, cfg)
@@ -621,8 +647,8 @@ function ninja.generateProjectCfg(cfg)
 	p.outln("")
 
 	-- premake-ninja relies on scoped rules
-	-- and they were added in ninja v1.6
-	p.outln("ninja_required_version = 1.6")
+	-- and they were added in ninja v1.11.1
+	p.outln("ninja_required_version = 1.11.1")
 	p.outln("")
 
 	---------------------------------------------------- figure out settings
