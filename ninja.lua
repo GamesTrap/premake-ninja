@@ -284,6 +284,10 @@ local function getldflags(toolset, cfg)
 
 	local ldflags = ninja.list(table.join(libdirs, toolset.getldflags(cfg), cfg.linkoptions))
 
+	if toolset == p.tools.msc and cfg.entrypoint ~= nil then
+		ldflags = ldflags .. " /ENTRY:" .. cfg.entrypoint
+	end
+
 	-- experimental feature, change install_name of shared libs
 	--if (toolset == p.tools.clang) and (cfg.kind == p.SHAREDLIB) and ninja.endsWith(cfg.buildtarget.name, ".dylib") then
 	--	ldflags = ldflags .. " -install_name " .. cfg.buildtarget.name
