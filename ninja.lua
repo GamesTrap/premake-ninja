@@ -315,7 +315,11 @@ local function prebuild_rule(cfg)
 		end
 		commands = table.join(commands, os.translateCommandsAndPaths(pretranslatePaths(cfg.prebuildcommands, cfg), cfg.workspace.basedir, cfg.workspace.location))
 		if (#commands > 1) then
-			commands = 'sh -c ' .. ninja.quote(table.implode(commands,"","",";"))
+			if p.tools.canonical(cfg.toolset) == p.tools.msc then
+				commands = 'cmd /c ' .. ninja.quote(table.implode(commands,"",""," && "))
+			else
+				commands = 'sh -c ' .. ninja.quote(table.implode(commands,"","",";"))
+			end
 		else
 			commands = commands[1]
 		end
@@ -334,7 +338,11 @@ local function prelink_rule(cfg)
 		end
 		commands = table.join(commands, os.translateCommandsAndPaths(pretranslatePaths(cfg.prelinkcommands, cfg), cfg.workspace.basedir, cfg.workspace.location))
 		if (#commands > 1) then
-			commands = 'sh -c ' .. ninja.quote(table.implode(commands,"","",";"))
+			if p.tools.canonical(cfg.toolset) == p.tools.msc then
+				commands = 'cmd /c ' .. ninja.quote(table.implode(commands,"",""," && "))
+			else
+				commands = 'sh -c ' .. ninja.quote(table.implode(commands,"","",";"))
+			end
 		else
 			commands = commands[1]
 		end
@@ -394,7 +402,11 @@ local function postbuild_rule(cfg)
 		end
 		commands = table.join(commands, os.translateCommandsAndPaths(pretranslatePaths(cfg.postbuildcommands, cfg), cfg.workspace.basedir, cfg.workspace.location))
 		if (#commands > 1) then
-			commands = 'sh -c ' .. ninja.quote(table.implode(commands,"","",";"))
+			if p.tools.canonical(cfg.toolset) == p.tools.msc then
+				commands = 'cmd /c ' .. ninja.quote(table.implode(commands,"",""," && "))
+			else
+				commands = 'sh -c ' .. ninja.quote(table.implode(commands,"","",";"))
+			end
 		else
 			commands = commands[1]
 		end
@@ -547,7 +559,11 @@ local function custom_command_build(prj, cfg, filecfg, filename, file_dependenci
 	end
 	commands = table.join(commands, os.translateCommandsAndPaths(pretranslatePaths(filecfg.buildcommands, cfg), prj.workspace.basedir, prj.workspace.location))
 	if (#commands > 1) then
-		commands = 'sh -c ' .. ninja.quote(table.implode(commands,"","",";"))
+		if p.tools.canonical(cfg.toolset) == p.tools.msc then
+			commands = 'cmd /c ' .. ninja.quote(table.implode(commands,"",""," && "))
+		else
+			commands = 'sh -c ' .. ninja.quote(table.implode(commands,"","",";"))
+		end
 	else
 		commands = commands[1]
 	end
@@ -632,9 +648,6 @@ end
 
 -- generate project + config build file
 function ninja.generateProjectCfg(cfg)
-	local oldGetDefaultSeparator = path.getDefaultSeparator
-	path.getDefaultSeparator = function() return "/" end
-
 	local prj = cfg.project
 	local key = get_key(cfg)
 	local toolset, toolset_version = p.tools.canonical(cfg.toolset)
@@ -749,8 +762,6 @@ function ninja.generateProjectCfg(cfg)
 		add_build(cfg, key, {}, "phony", {cfg_output}, {}, {}, {})
 	end
 	p.outln("")
-
-	path.getDefaultSeparator = oldGetDefaultSeparator
 end
 
 -- return name of output binary relative to build folder
