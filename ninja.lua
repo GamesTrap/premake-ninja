@@ -283,6 +283,9 @@ local function getldflags(toolset, cfg)
 		cfg.project.location = tmpCfgProjectDir
 
 	local ldflags = ninja.list(table.join(libdirs, toolset.getldflags(cfg), cfg.linkoptions))
+	if cfg.runpathdirs then
+		ldflags = ldflags .. ninja.list(table.join(toolset.getrunpathdirs(cfg, table.join(cfg.runpathdirs, p.config.getsiblingtargetdirs(cfg)))))
+	end
 
 	if toolset == p.tools.msc and cfg.entrypoint ~= nil then
 		ldflags = ldflags .. " /ENTRY:" .. cfg.entrypoint
