@@ -662,9 +662,10 @@ function ninja.generateProjectCfg(cfg)
   -- Some toolset fixes
 	cfg.gccprefix = cfg.gccprefix or ""
 
-	if cfg.externalwarnings == nil then
+	if os.target() == "windows" and cfg.externalwarnings == nil then
 		cfg.externalwarnings = "Default"
 	end
+
 	if cfg.characterset == nil then
 		cfg.characterset = "Default"
 	end
