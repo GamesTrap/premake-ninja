@@ -561,14 +561,7 @@ local function module_scan_rule(cfg, toolset)
 end
 
 local function module_collate_rule(cfg, toolset)
-	local premakeExe = ""
-	if os.target() == "windows" then
-		premakeExe = "libs\\premake5\\windows\\premake5.exe"
-	else
-		premakeExe = "libs/premake5/windows/./premake5"
-	end
-
-	local cmd = premakeExe .. " collate_modules "
+	local cmd = _PREMAKE_COMMAND .. " collate_modules "
 
 	local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
 	cmd = cmd .. "--tdi=" .. obj_dir .. "/CXXDependInfo.json "
@@ -930,19 +923,15 @@ function ninja.generateProjectCfg(cfg)
 	p.outln("")
 	if #cfg.postbuildcommands > 0 or cfg.postbuildmessage then
 		local output = {}
-		if modulefiles then --TODO Temporary insert module scanning in phony step
-			for k,v in pairs(modulefiles) do
-				table.insert(output, v)
-			end
+		if modulefiles then --TODO Temporary insert module collation in phony step
+			table.insert(output, path.join(obj_dir, "CXX.dd"))
 		end
 		table.insert(output, "postbuild_" .. get_key(cfg))
 		add_build(cfg, key, {}, "phony", output, {}, {}, {})
 	else
 		local output = {}
-		if modulefiles then --TODO Temporary insert module scanning in phony step
-			for k,v in pairs(modulefiles) do
-				table.insert(output, v)
-			end
+		if modulefiles then --TODO Temporary insert module collation in phony step
+			table.insert(output, path.join(obj_dir, "CXX.dd"))
 		end
 		table.insert(output, cfg_output)
 		add_build(cfg, key, {}, "phony", output, {}, {}, {})
