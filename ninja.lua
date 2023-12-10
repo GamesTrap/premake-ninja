@@ -537,11 +537,11 @@ local function module_scan_rule(cfg, toolset)
 		local _, toolsetVersion = p.tools.canonical(cfg.toolset)
 		local compilerName = toolset.gettoolname(cfg, "cxx")
 
-		cmd = scannerName .. " -format=p1689 -- " .. compilerName .. " $DEFINES $INCLUDES $FLAGS -x c++ $in -c -o $OBJ_FILE -MT $DYNDEP_INTERMEDIATE_FILE -MD -MF $DEP_FILE > $DYNDEP_INTERMEDIATE_FILE.tmp && mv $DYNDEP_INTERMEDIATE_FILE.tmp $DYNDEP_INTERMEDIATE_FILE"
+		cmd = scannerName .. " -format=p1689 -- " .. compilerName .. " $CXXFLAGS -x c++ $in -c -o $OBJ_FILE -MT $DYNDEP_INTERMEDIATE_FILE -MD -MF $DEP_FILE > $DYNDEP_INTERMEDIATE_FILE.tmp && mv $DYNDEP_INTERMEDIATE_FILE.tmp $DYNDEP_INTERMEDIATE_FILE"
 	elseif toolset == p.tools.gcc then
-		cmd = scannerName .. " $DEFINES $INCLUDES $FLAGS -E -x c++ $in -MT $DYNDEP_INTERMEDIATE_FILE -MD -MF $DEP_FILE -fmodules-ts -fdeps-file=$DYNDEP_INTERMEDIATE_FILE -fdeps-target=$OBJ_FILE -fdeps-format=p1689r5 -o $PREPROCESSED_OUTPUT_FILE"
+		cmd = scannerName .. " $CXXFLAGS -E -x c++ $in -MT $DYNDEP_INTERMEDIATE_FILE -MD -MF $DEP_FILE -fmodules-ts -fdeps-file=$DYNDEP_INTERMEDIATE_FILE -fdeps-target=$OBJ_FILE -fdeps-format=p1689r5 -o $PREPROCESSED_OUTPUT_FILE"
 	elseif toolset == p.tools.msc then
-		cmd = scannerName .. " $DEFINES $INCLUDES $FLAGS $in -nologo -TP -showIncludes -scanDependencies $DYNDEP_INTERMEDIATE_FILE -Fo$OBJ_FILE"
+		cmd = scannerName .. " $CXXFLAGS $in -nologo -TP -showIncludes -scanDependencies $DYNDEP_INTERMEDIATE_FILE -Fo$OBJ_FILE"
 	else
 		term.setTextColor(term.errorColor)
 		print("C++20 Modules are only supported with Clang, GCC and MSC!")
@@ -686,6 +686,61 @@ local function files_build(prj, cfg, toolset, pch_dependency, regular_file_depen
 	return objfiles
 end
 
+local function is_module_file(file)
+	local fileEnding = path.getextension(file)
+
+	if _OPTIONS["experimental-modules-scan-all"] and path.iscppfile(file) then
+		return true
+	end
+
+	if fileEnding == ".cxx" or fileEnding == ".cxxm" or fileEnding == ".ixx" or
+	   fileEnding == ".cppm" or fileEnding == ".c++m" or fileEnding == ".ccm" or
+	   fileEnding == ".mpp" then
+		return true
+	end
+
+	return false
+end
+
+local function scan_module_file_build(cfg, filecfg, toolset, modulefiles)
+	local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
+	local filepath = project.getrelative(cfg.workspace, filecfg.abspath)
+	local has_custom_settings = fileconfig.hasFileSettings(filecfg)
+
+	local outputFilebase = obj_dir .. "/" .. filecfg.basename
+	local dyndepfilename = outputFilebase .. toolset.objectextension .. ".ddi"
+	modulefiles[#modulefiles + 1] = dyndepfilename
+
+	local vars = {}
+	table.insert(vars, "DEP_FILE = " .. outputFilebase .. toolset.objectextension .. ".ddi.d")
+	table.insert(vars, "DYNDEP_INTERMEDIATE_FILE = " .. dyndepfilename)
+	table.insert(vars, "OBJ_FILE = " .. outputFilebase .. toolset.objectextension)
+	table.insert(vars, "PREPROCESSED_OUTPUT_FILE = " .. outputFilebase .. toolset.objectextension .. ".ddi.i")
+
+	add_build(cfg, dyndepfilename, {}, "__module_scan", {filepath}, {}, {}, vars)
+end
+
+local function files_scan_modules(prj, cfg, toolset)
+	local modulefiles = {}
+	tree.traverse(project.getsourcetree(prj), {
+	onleaf = function(node, depth)
+		if not is_module_file(node.name) then
+			return
+		end
+
+		local filecfg = fileconfig.getconfig(node, cfg)
+		if not filecfg or filecfg.flags.ExcludeFromBuild then
+			return
+		end
+
+		scan_module_file_build(cfg, filecfg, toolset, modulefiles)
+	end,
+	}, false, 1)
+	p.outln("")
+
+	return modulefiles
+end
+
 local function generated_files_build(cfg, generated_files, key)
 	local final_dependency = {}
 	if #generated_files > 0 then
@@ -750,17 +805,23 @@ function ninja.generateProjectCfg(cfg)
 
 	---------------------------------------------------- write rules
 	p.outln("# core rules for " .. cfg.name)
-	if _OPTIONS["experimental-enable-cxx-modules"] then
-		module_scan_rule(cfg, toolset)
-	end
 	prebuild_rule(cfg)
 	prelink_rule(cfg)
 	postbuild_rule(cfg)
 	compilation_rules(cfg, toolset, pch)
 	custom_command_rule()
+	if _OPTIONS["experimental-enable-cxx-modules"] then
+		module_scan_rule(cfg, toolset)
+	end
+
+	local modulefiles = nil
+	if _OPTIONS["experimental-enable-cxx-modules"] then
+	---------------------------------------------------- scan all module files
+		p.outln("# scan modules")
+		modulefiles = files_scan_modules(prj, cfg, toolset)
+	end
 
 	---------------------------------------------------- build all files
-	p.outln("# build files")
 
 	local pch_dependency = pch_build(cfg, pch)
 
@@ -769,6 +830,7 @@ function ninja.generateProjectCfg(cfg)
 	local regular_file_dependencies = table.join(iif(#generated_files > 0, {"generated_files_" .. key}, {}), file_dependencies)
 
 	local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
+	p.outln("# build files")
 	local objfiles = files_build(prj, cfg, toolset, pch_dependency, regular_file_dependencies, file_dependencies)
 	local final_dependency = generated_files_build(cfg, generated_files, key)
 
@@ -811,9 +873,23 @@ function ninja.generateProjectCfg(cfg)
 
 	p.outln("")
 	if #cfg.postbuildcommands > 0 or cfg.postbuildmessage then
-		add_build(cfg, key, {}, "phony", {"postbuild_" .. get_key(cfg)}, {}, {}, {})
+		local output = {}
+		if modulefiles then --TODO Temporary insert module scanning in phony step
+			for k,v in pairs(modulefiles) do
+				table.insert(output, v)
+			end
+		end
+		table.insert(output, "postbuild_" .. get_key(cfg))
+		add_build(cfg, key, {}, "phony", output, {}, {}, {})
 	else
-		add_build(cfg, key, {}, "phony", {cfg_output}, {}, {}, {})
+		local output = {}
+		if modulefiles then --TODO Temporary insert module scanning in phony step
+			for k,v in pairs(modulefiles) do
+				table.insert(output, v)
+			end
+		end
+		table.insert(output, cfg_output)
+		add_build(cfg, key, {}, "phony", output, {}, {}, {})
 	end
 	p.outln("")
 end

@@ -17,7 +17,7 @@ newoption
 newoption
 {
 	trigger = "experimental-modules-scan-all",
-	description = "Enable scanning for all C++ translation units. By default only files ending with .cxx are scanned."
+	description = "Enable scanning for all C++ translation units. By default only files ending with .cxx, .cxxm, .ixx, .cppm, .c++m, .ccm and .mpp are scanned."
 }
 
 newaction
