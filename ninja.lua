@@ -560,8 +560,22 @@ local function module_scan_rule(cfg, toolset)
 	p.outln("")
 end
 
+local collateModuleScript = nil
+
 local function module_collate_rule(cfg, toolset)
-	local cmd = _PREMAKE_COMMAND .. " collate_modules "
+	if not collateModuleScript then
+		local collateModuleScripts = os.matchfiles(_MAIN_SCRIPT_DIR .. "/.modules/**/collate_modules/collate_modules.lua")
+		if collateModuleScripts == nil or collateModuleScripts[1] == nil then
+			term.setTextColor(term.errorColor)
+			print("Unable to find collate_modules.lua script!")
+			term.setTextColor(nil)
+			os.exit()
+		else
+			collateModuleScript = collateModuleScripts[1]
+		end
+	end
+
+	local cmd = _PREMAKE_COMMAND .. " --file=" .. collateModuleScript .. " collate_modules "
 
 	local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
 	cmd = cmd .. "--tdi=" .. obj_dir .. "/CXXDependInfo.json "
