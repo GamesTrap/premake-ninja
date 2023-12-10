@@ -560,6 +560,42 @@ local function module_scan_rule(cfg, toolset)
 	p.outln("")
 end
 
+local function module_collate_rule(cfg, toolset)
+	local premakeExe = ""
+	if os.target() == "windows" then
+		premakeExe = "libs\\premake5\\windows\\premake5.exe"
+	else
+		premakeExe = "libs/premake5/windows/./premake5"
+	end
+
+	local cmd = premakeExe .. " collate_modules "
+
+	local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
+	cmd = cmd .. "--tdi=" .. obj_dir .. "/CXXDependInfo.json "
+
+	if toolset == p.tools.clang then
+		cmd = cmd .. "--modmapfmt=clang "
+	elseif toolset == p.tools.gcc then
+		cmd = cmd .. "--modmapfmt=gcc "
+	elseif toolset == p.tools.msc then
+		cmd = cmd .. "--modmapfmt=msvc "
+	else
+		term.setTextColor(term.errorColor)
+		print("C++20 Modules are only supported with Clang, GCC and MSC!")
+		term.setTextColor(nil)
+		os.exit()
+	end
+
+	cmd = cmd .. "--dd=$out @$out.rsp"
+
+	p.outln("rule __module_collate")
+	p.outln("  command = " .. cmd)
+	p.outln("  description = Generating C++ dyndep file $out")
+	p.outln("  rspfile = $out.rsp")
+	p.outln("  rspfile_content = $in")
+	p.outln("")
+end
+
 local function collect_generated_files(prj, cfg)
 	local generated_files = {}
 	tree.traverse(project.getsourcetree(prj), {
@@ -812,6 +848,7 @@ function ninja.generateProjectCfg(cfg)
 	custom_command_rule()
 	if _OPTIONS["experimental-enable-cxx-modules"] then
 		module_scan_rule(cfg, toolset)
+		module_collate_rule(cfg, toolset)
 	end
 
 	local modulefiles = nil
