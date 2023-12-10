@@ -743,7 +743,7 @@ local function scan_module_file_build(cfg, filecfg, toolset, modulefiles)
 	local filepath = project.getrelative(cfg.workspace, filecfg.abspath)
 	local has_custom_settings = fileconfig.hasFileSettings(filecfg)
 
-	local outputFilebase = obj_dir .. "/" .. filecfg.basename
+	local outputFilebase = obj_dir .. "/" .. filecfg.name
 	local dyndepfilename = outputFilebase .. toolset.objectextension .. ".ddi"
 	modulefiles[#modulefiles + 1] = dyndepfilename
 
@@ -856,6 +856,25 @@ function ninja.generateProjectCfg(cfg)
 	---------------------------------------------------- scan all module files
 		p.outln("# scan modules")
 		modulefiles = files_scan_modules(prj, cfg, toolset)
+	end
+
+	if _OPTIONS["experimental-enable-cxx-modules"] and modulefiles then
+		---------------------------------------------------- collate all scanned module files
+		p.outln("# collate modules")
+
+		local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
+		local outputFile = obj_dir .. "/CXX.dd"
+
+		local implicitOutputs = {obj_dir .. "/CXXModules.json"}
+		for k,v in pairs(modulefiles) do
+			table.insert(implicitOutputs, path.replaceextension(v, "modmap"))
+		end
+
+		local implicit_inputs = {}
+		local dependencies = {}
+		local vars = {}
+		add_build(cfg, outputFile, implicitOutputs, "__module_collate", modulefiles, implicit_inputs, dependencies, vars)
+		p.outln("")
 	end
 
 	---------------------------------------------------- build all files
