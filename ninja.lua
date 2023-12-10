@@ -577,9 +577,6 @@ local function module_collate_rule(cfg, toolset)
 
 	local cmd = _PREMAKE_COMMAND .. " --file=" .. collateModuleScript .. " collate_modules "
 
-	local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
-	cmd = cmd .. "--tdi=" .. obj_dir .. "/CXXDependInfo.json "
-
 	if toolset == p.tools.clang then
 		cmd = cmd .. "--modmapfmt=clang "
 	elseif toolset == p.tools.gcc then
@@ -593,7 +590,7 @@ local function module_collate_rule(cfg, toolset)
 		os.exit()
 	end
 
-	cmd = cmd .. "--dd=$out @$out.rsp"
+	cmd = cmd .. "--dd=$out --ddi=\"$in\" @$out.rsp"
 
 	p.outln("rule __module_collate")
 	p.outln("  command = " .. cmd)
