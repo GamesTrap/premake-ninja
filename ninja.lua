@@ -513,6 +513,53 @@ local function custom_command_rule()
 	p.outln("")
 end
 
+local function get_module_scanner_name(toolset, toolsetVersion, cfg)
+	local scannerName = nil
+
+	if toolset == p.tools.clang then
+		scannerName = "clang-scan-deps"
+		if toolsetVersion then
+			scannerName = scannerName .. "-" .. toolsetVersion
+		end
+	elseif toolset == p.tools.gcc or toolset == p.tools.msc then
+		scannerName = toolset.gettoolname(cfg, "cxx")
+	end
+
+	return scannerName
+end
+
+local function module_scan_rule(cfg, toolset)
+	local cmd = ""
+
+	local scannerName = get_module_scanner_name(toolset, toolsetVersion, cfg)
+
+	if toolset == p.tools.clang then
+		local _, toolsetVersion = p.tools.canonical(cfg.toolset)
+		local compilerName = toolset.gettoolname(cfg, "cxx")
+
+		cmd = scannerName .. " -format=p1689 -- " .. compilerName .. " $DEFINES $INCLUDES $FLAGS -x c++ $in -c -o $OBJ_FILE -MT $DYNDEP_INTERMEDIATE_FILE -MD -MF $DEP_FILE > $DYNDEP_INTERMEDIATE_FILE.tmp && mv $DYNDEP_INTERMEDIATE_FILE.tmp $DYNDEP_INTERMEDIATE_FILE"
+	elseif toolset == p.tools.gcc then
+		cmd = scannerName .. " $DEFINES $INCLUDES $FLAGS -E -x c++ $in -MT $DYNDEP_INTERMEDIATE_FILE -MD -MF $DEP_FILE -fmodules-ts -fdeps-file=$DYNDEP_INTERMEDIATE_FILE -fdeps-target=$OBJ_FILE -fdeps-format=p1689r5 -o $PREPROCESSED_OUTPUT_FILE"
+	elseif toolset == p.tools.msc then
+		cmd = scannerName .. " $DEFINES $INCLUDES $FLAGS $in -nologo -TP -showIncludes -scanDependencies $DYNDEP_INTERMEDIATE_FILE -Fo$OBJ_FILE"
+	else
+		term.setTextColor(term.errorColor)
+		print("C++20 Modules are only supported with Clang, GCC and MSC!")
+		term.setTextColor(nil)
+		os.exit()
+	end
+
+	p.outln("rule __module_scan")
+	if toolset == p.tools.msc then
+		p.outln("  deps = msvc")
+	else
+		p.outln("  depfile = $DEP_FILE")
+	end
+	p.outln("  command = " .. cmd)
+	p.outln("  description = Scanning $in for C++ dependencies")
+	p.outln("")
+end
+
 local function collect_generated_files(prj, cfg)
 	local generated_files = {}
 	tree.traverse(project.getsourcetree(prj), {
@@ -703,6 +750,9 @@ function ninja.generateProjectCfg(cfg)
 
 	---------------------------------------------------- write rules
 	p.outln("# core rules for " .. cfg.name)
+	if _OPTIONS["experimental-enable-cxx-modules"] then
+		module_scan_rule(cfg, toolset)
+	end
 	prebuild_rule(cfg)
 	prelink_rule(cfg)
 	postbuild_rule(cfg)
