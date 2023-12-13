@@ -446,6 +446,7 @@ local function compilation_rules(cfg, toolset, pch)
 		p.outln("  description = cxx $out")
 		p.outln("  deps = msvc")
 		p.outln("")
+		--TODO rule cxx_module
 		p.outln("RESFLAGS = " .. all_resflags)
 		p.outln("rule rc")
 		p.outln("  command = " .. rc .. " /nologo /fo$out $in $RESFLAGS")
@@ -483,6 +484,12 @@ local function compilation_rules(cfg, toolset, pch)
 		p.outln("rule cxx")
 		p.outln("  command = " .. cxx .. " $CXXFLAGS" .. force_include_pch .. " -x c++ -MF $out.d -c -o $out $in")
 		p.outln("  description = cxx $out")
+		p.outln("  depfile = $out.d")
+		p.outln("  deps = gcc")
+		p.outln("")
+		p.outln("rule cxx_module")
+		p.outln("  command = " .. cxx .. " $CXXFLAGS" .. force_include_pch .. " -MT $out -MF $out.d @$DYNDEP_MODULE_MAP_FILE -c -o $out $in")
+		p.outln("  description = cxx_module $out")
 		p.outln("  depfile = $out.d")
 		p.outln("  deps = gcc")
 		p.outln("")
@@ -630,6 +637,22 @@ local function collect_generated_files(prj, cfg)
 	return generated_files
 end
 
+local function is_module_file(file)
+	local fileEnding = path.getextension(file)
+
+	if _OPTIONS["experimental-modules-scan-all"] and path.iscppfile(file) then
+		return true
+	end
+
+	if fileEnding == ".cxx" or fileEnding == ".cxxm" or fileEnding == ".ixx" or
+	   fileEnding == ".cppm" or fileEnding == ".c++m" or fileEnding == ".ccm" or
+	   fileEnding == ".mpp" then
+		return true
+	end
+
+	return false
+end
+
 local function pch_build(cfg, pch)
 	local pch_dependency = {}
 	if pch then
@@ -676,13 +699,26 @@ local function compile_file_build(cfg, filecfg, toolset, pch_dependency, regular
 		end
 		add_build(cfg, objfilename, {}, "cc", {filepath}, pch_dependency, regular_file_dependencies, cflags)
 	elseif shouldcompileascpp(filecfg) then
-		local objfilename = obj_dir .. "/" .. filecfg.objname .. (toolset.objectextension or ".o")
+		local objfilename = obj_dir .. "/" .. filecfg.objname .. path.getextension(filecfg.path) .. (toolset.objectextension or ".o")
 		objfiles[#objfiles + 1] = objfilename
 		local cxxflags = {}
 		if has_custom_settings then
 			cxxflags = {"CXXFLAGS = $CXXFLAGS " .. getcxxflags(toolset, cfg, filecfg)}
 		end
-		add_build(cfg, objfilename, {}, "cxx", {filepath}, pch_dependency, regular_file_dependencies, cxxflags)
+
+		local rule = "cxx"
+		local regFileDeps = table.arraycopy(regular_file_dependencies)
+		if _OPTIONS["experimental-enable-cxx-modules"] and is_module_file(filecfg.name) then
+			rule = "cxx_module"
+			local dynDepModMapFile = objfilename .. ".modmap"
+			local dynDepFile = path.join(obj_dir, "CXX.dd")
+			table.insert(cxxflags, "DYNDEP_MODULE_MAP_FILE = " .. dynDepModMapFile)
+			table.insert(cxxflags, "dyndep = " .. dynDepFile)
+			table.insert(regFileDeps, dynDepFile)
+			table.insert(regFileDeps, dynDepModMapFile)
+		end
+
+		add_build(cfg, objfilename, {}, rule, {filepath}, pch_dependency, regFileDeps, cxxflags)
 	elseif path.isresourcefile(filecfg.abspath) then
 		local objfilename = obj_dir .. "/" .. filecfg.name .. ".res"
 		objfiles[#objfiles + 1] = objfilename
@@ -724,22 +760,6 @@ local function files_build(prj, cfg, toolset, pch_dependency, regular_file_depen
 	p.outln("")
 
 	return objfiles
-end
-
-local function is_module_file(file)
-	local fileEnding = path.getextension(file)
-
-	if _OPTIONS["experimental-modules-scan-all"] and path.iscppfile(file) then
-		return true
-	end
-
-	if fileEnding == ".cxx" or fileEnding == ".cxxm" or fileEnding == ".ixx" or
-	   fileEnding == ".cppm" or fileEnding == ".c++m" or fileEnding == ".ccm" or
-	   fileEnding == ".mpp" then
-		return true
-	end
-
-	return false
 end
 
 local function scan_module_file_build(cfg, filecfg, toolset, modulefiles)
@@ -869,7 +889,8 @@ function ninja.generateProjectCfg(cfg)
 		local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
 		local outputFile = obj_dir .. "/CXX.dd"
 
-		local implicitOutputs = {obj_dir .. "/CXXModules.json"}
+		local implicitOutputs = {}
+		-- local implicitOutputs = {obj_dir .. "/CXXModules.json"}
 		for k,v in pairs(modulefiles) do
 			table.insert(implicitOutputs, path.replaceextension(v, "modmap"))
 		end

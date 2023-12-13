@@ -339,16 +339,411 @@ local function fileIsFullPath(name)
 	return false
 end
 
-local function moduleUsageSeed(modFiles, moduleLocations, objects, usages)
-	--TODO
+local function ConvertToNinjaPath(path)
+	return path
+end
+
+local function ModuleLocations_PathForGenerator(path)
+	return ConvertToNinjaPath(path)
+end
+
+local function ModuleLocations_BMILocationForModule(modFiles, logicalName)
+	local m = modFiles[logicalName]
+	if m then
+		return m.BMIPath
+	end
 
 	return nil
 end
 
-local function generateNinjaDynDepFile()
-	local fileStr = "ninja_dyndep_version = 1.0\n"
+local function ModuleLocations_BMIGeneratorPathForModule(modFiles, moduleLocations, logicalName)
+	local bmiLoc = ModuleLocations_BMILocationForModule(modFiles, logicalName)
+	if bmiLoc then
+		return ModuleLocations_PathForGenerator(bmiLoc)
+	end
 
-	return fileStr
+	return bmiLoc
+end
+
+local function Usages_AddReference(usages, logicalName, loc, lookupMethod)
+	if usages.Reference[logicalName] then
+		local r = usages.Reference[logicalName]
+
+		if r.Path == loc and r.Method == lookupMethod then
+			return true
+		end
+
+		printError("Disagreement of the location of the '" .. logicalName .. "' module. Location A: '" ..
+		           r.Path .. "' via " .. r.Method .. "; Location B: '" .. loc .. "' via " .. lookupMethod .. ".")
+		return false
+	end
+
+	usages.Reference[logicalName] =
+	{
+		Path = "",
+		Method = LookupMethod.ByName
+	}
+	local ref = usages.Reference[logicalName]
+	ref.Path = loc
+	ref.Method = lookupMethod
+end
+
+local function moduleUsageSeed(modFiles, moduleLocations, objects, usages)
+	local internalUsages = {}
+	local unresolved = {}
+
+	for _, object in pairs(objects) do
+		--Add references for each of the provided modules.
+		for _1, provide in pairs(object.Provides) do
+			local bmiLoc = ModuleLocations_BMIGeneratorPathForModule(modFiles, moduleLocations, provide.LogicalName)
+			if bmiLoc then
+				Usages_AddReference(usages, provide.LogicalName, bmiLoc, LookupMethod.ByName)
+			end
+		end
+
+		--For each requires, pull in what is required.
+		for _1, require in pairs(object.Requires) do
+			--Find the required name in the current target.
+			local bmiLoc = ModuleLocations_BMIGeneratorPathForModule(modFiles, moduleLocations, require.LogicalName)
+
+			--Find transitive usages.
+			local transitiveUsages = usages.Usage[require.LogicalName]
+
+			for _2, provide in pairs(object.Provides) do
+				if not usages.Usage[provide.LogicalName] then
+					usages.Usage[provide.LogicalName] = {}
+				end
+				local thisUsages = usages.Usage[provide.LogicalName]
+
+				--Add the direct usage.
+				thisUsages[require.LogicalName] = 1
+
+				if not transitiveUsages or internalUsages[require.LogicalName] then
+					--Mark that we need to update transitive usages later.
+					if bmiLoc then
+						if not internalUsages[provide.LogicalName] then
+							internalUsages[provide.LogicalName] = {}
+						end
+						internalUsages[provide.LogicalName][require.LogicalName] = 1
+					end
+				else
+					--Add the transitive usage.
+					for tu, _3 in pairs(transitiveUsages) do
+						thisUsages[tu] = 1
+					end
+				end
+			end
+
+			if bmiLoc then
+				Usages_AddReference(usages, require.LogicalName, bmiLoc, require.Method)
+			end
+		end
+	end
+
+	--While we have internal usages to manage.
+	while next(internalUsages) do
+		local startingSize = #internalUsages
+
+		--For each internal usage.
+		for f, s in pairs(internalUsages) do
+			local thisUsages = usages.Usage[f]
+
+			for f1, s2 in pairs(s) do
+				--Check if this required module uses other internal modules; defer if so.
+				if internalUsages[f1] then
+					goto continueUse
+				end
+
+				local transitiveUsages = usages.Usage[f1]
+				if transitiveUsages then
+					for transitiveUsage, _ in pairs(transitiveUsages) do
+						thisUsages[transitiveUsage] = 1
+					end
+				end
+
+				s[f1] = nil
+
+				::continueUse::
+			end
+
+			--Erase the entry if it doesn't have any remaining usages.
+			if #s == 0 then
+				internalUsages[f] = nil
+			end
+		end
+
+		--Check that at least one usage was resolved.
+		if startingSize == #internalUsages then
+			--Nothing could be resolved this loop; we have a cycle, so record the cycle and exit.
+			for f, s in pairs(internalUsages) do
+				if not table.contains(unresolved, f) then
+					table.insert(unresolved, f)
+				end
+			end
+			break
+		end
+	end
+
+	return unresolved
+end
+
+local function Ninja_WriteBuild(ninjaBuild)
+	local result = ""
+
+	--Make sure there is a rule.
+	if ninjaBuild.Rule == "" then
+		printError("No rule for Ninja_WriteBuild! called with comment: " .. ninjaBuild.Comment)
+		os.exit(1)
+	end
+
+	--Make sure there is at least one output file.
+	if #ninjaBuild.Outputs == 0 then
+		printError("No output files for Ninja_WriteBuild! called with comment: " .. ninjaBuild.Comment)
+		os.exit(1)
+	end
+	local buildStr = ""
+
+	if ninjaBuild.Comment ~= "" then
+		result = result .. ninjaBuild.Comment .. "\n"
+	end
+
+	--Write output files.
+	buildStr = buildStr .. "build"
+
+	--Write explicit outputs
+	for _, output in pairs(ninjaBuild.Outputs) do
+		buildStr = buildStr .. " " .. output
+		-- if ComputingUnknownDependencies then
+		-- 	--TODO
+		-- end
+	end
+
+	--Write implicit outputs
+	if #ninjaBuild.ImplicitOuts > 0 then
+		--Assume Ninja is new enough to support implicit outputs.
+		--Callers should not populate this field otherwise.
+		buildStr = buildStr .. " |"
+		for _, implicitOut in pairs(ninjaBuild.ImplicitOuts) do
+			buildStr = buildStr .. " " .. implicitOut
+			-- if ComputingUnknownDependencies then
+			-- 	--TODO
+			-- end
+		end
+	end
+
+	--Repeat some outputs, but expressed as absolute paths.
+	--This helps Ninja handle absolute paths found in a depfile.
+	--FIXME: Unfortunately this causes Ninja to stat the file twice.
+	--We could avoid this if Ninja Issue #1251 were fixed.
+	if #ninjaBuild.WorkDirOuts > 0 then
+		if SupportsImplicitOuts() and #ninjaBuild.ImplicitOuts == 0 then
+			--Make them implicit outputs if supported by this version of Ninja.
+			buildStr = buildStr .. " |"
+		end
+
+		for _, workDirOut in pairs(ninjaBuild.WorkDirOuts) do
+			buildStr = buildStr .. " " .. workDirOut
+		end
+	end
+
+	--Write the rule.
+	buildStr = buildStr .. ": " .. ninjaBuild.Rule
+
+	local arguments = ""
+
+	--TODO: Better formatting for when there are multiple input/output files.
+
+	--Write explicit dependencies.
+	for _, explicitDep in pairs(ninjaBuild.ExplicitDeps) do
+		arguments = arguments .. " " .. explicitDep
+	end
+
+	--Write implicit dependencies.
+	if #ninjaBuild.ImplicitDeps > 0 then
+		arguments = arguments .. " |"
+		for _, implicitDep in pairs(ninjaBuild.ImplicitDeps) do
+			arguments = arguments .. " " .. implicitDep
+		end
+	end
+
+	--Write oder-only dependencies.
+	if #ninjaBuild.OrderOnlyDeps > 0 then
+		arguments = arguments .. " ||"
+		for _, orderOnlyDep in pairs(ninjaBuild.OrderOnlyDeps) do
+			arguments = arguments .. " " .. orderOnlyDep
+		end
+	end
+
+	arguments = arguments .. "\n"
+
+	--Write the variables bound to this build statement.
+	local assignments = ""
+	for variable, value in pairs(ninjaBuild.Variables) do
+		assignments = assignments .. "    " .. variable .. " = " .. value .. "\n"
+	end
+
+	--Check if a response file rule should be used
+	local useResponseFile = false
+	--TODO
+
+	return buildStr .. arguments .. assignments .. "\n"
+end
+
+local function GetTransitiveUsages(modFiles, locs, required, usages)
+	local transitiveUsageDirects = {}
+	local transitiveUsageNames = {}
+
+	local allUsages = {}
+
+	for _, r in pairs(required) do
+		local bmiLoc = ModuleLocations_BMIGeneratorPathForModule(modFiles, locs, r.LogicalName)
+		if bmiLoc then
+			table.insert(allUsages, {LogicalName = r.LogicalName, Location = bmiLoc, Method = r.Method})
+			if not table.contains(transitiveUsageDirects, r.LogicalName) then
+				table.insert(transitiveUsageDirects, r.LogicalName)
+			end
+
+			--Insert transitive usages.
+			local transitiveUsages = usages.Usage[r.LogicalName]
+			if transitiveUsages then
+				for _1, tu in pairs(transitiveUsages) do
+					if not table.contains(transitiveUsageNames, tu) then
+						table.insert(transitiveUsageNames, tu)
+					end
+				end
+			end
+		end
+	end
+
+	for _, transitiveName in pairs(transitiveUsageNames) do
+		if not table.contains(transitiveUsageDirects, transitiveName) then
+			local moduleRef = usages.Reference[transitiveName]
+			if moduleRef then
+				table.insert(allUsages, {LogicalName = transitiveName, Location = moduleRef.Path, Method = moduleRef.Method})
+			end
+		end
+	end
+
+	return allUsages
+end
+
+local function ModuleMapContentClang(modFiles, locs, object, usages)
+	local mm = ""
+
+	--Clang's command line only supports a single output.
+	--If more than one is expected, we cannot make a useful module map file.
+	if #object.Provides > 1 then
+		return ""
+	end
+
+	--A series of flags which tell the compiler where to look for modules.
+
+	for _, provide in pairs(object.Provides) do
+		local bmiLoc = ModuleLocations_BMIGeneratorPathForModule(modFiles, locs, provide.LogicalName)
+		if bmiLoc then
+			--Force the TU to be considered a C++ module source file regardless of extension.
+			mm = mm .. "-x c++-module\n"
+
+			mm = mm .. "-fmodule-output=" .. bmiLoc .. "\n"
+			break
+		end
+	end
+
+	local allUsages = GetTransitiveUsages(modFiles, locs, object.Requires, usages)
+	for _, usage in pairs(allUsages) do
+		mm = mm .. "-fmodule-file=" .. usage.LogicalName .. "=" .. usage.Location .. "\n"
+	end
+
+	return mm
+end
+
+local function ModuleMapContentGCC(modFiles, locs, object, usages)
+	local mm = ""
+
+	--Documented in GCC's documentation.
+	--The format is a series of lines with a module name and the associated
+	--filename separated by spaces. The first line may use '$root' as the module
+	--name to specify a "repository root".
+	--That is used to anchor any relative paths present in the file
+	--(Premake-Ninja should never generate any).
+
+	--Write the root directory to use for module paths.
+	mm = mm .. "$root " .. locs.RootDirectory .. "\n"
+
+	for _, provide in pairs(object.Provides) do
+		local bmiLoc = ModuleLocations_BMIGeneratorPathForModule(modFiles, locs, provide.LogicalName)
+		if bmiLoc then
+			mm = mm .. provide.LogicalName .. " " .. bmiLoc .. "\n"
+		end
+	end
+	for _, require in pairs(object.Requires) do
+		local bmiLoc = ModuleLocations_BMIGeneratorPathForModule(modFiles, locs, require.LogicalName)
+		if bmiLoc then
+			mm = mm .. require.LogicalName .. " " .. bmiLoc .. "\n"
+		end
+	end
+
+	return mm
+end
+
+local function ModuleMapContentMSVC(modFiles, locs, object, usages)
+	local mm
+
+	--A response file of '-reference NAME=PATH' arguments.
+
+	--MSVC's command line only supports a single output.
+	--If more than one is expected, we cannot make a useful module map file.
+	if #object.Provides > 1 then
+		return ""
+	end
+
+	local function flagForMethod(method)
+		if method == LookupMethod.ByName then
+			return "-reference"
+		elseif method == LookupMethod.IncludeAngle then
+			return "-headerUnit:angle"
+		elseif method == LookupMethod.IncludeQuote then
+			return "-headerUnit:quote"
+		else
+			printError("Unsupported lookup method")
+			os.exit(1)
+		end
+	end
+
+	for _, provide in pairs(object.Provides) do
+		if provide.IsInterface then
+			mm = mm .. "-interface\n"
+		else
+			mm = mm .. "-internalPartition\n"
+		end
+
+		local bmiLoc = ModuleLocations_BMIGeneratorPathForModule(modFiles, locs, provide.LogicalName)
+		if bmiLoc then
+			mm = mm .. "-ifcOutput " .. bmiLoc .. "\n"
+		end
+	end
+
+	local allUsages = GetTransitiveUsages(modFiles, locs, object.Requires, usages)
+	for _, usage in pairs(allUsages) do
+		local flag = flagForMethod(usage.Method)
+
+		mm = mm .. flag .. " " .. usage.LogicalName .. "=" .. usage.Location .. "\n"
+	end
+
+	return mm
+end
+
+local function ModuleMapContent(modmapfmt, modFiles, locs, object, usages)
+	if modmapfmt == "clang" then
+		return ModuleMapContentClang(modFiles, locs, object, usages)
+	elseif modmapfmt == "gcc" then
+		return ModuleMapContentGCC(modFiles, locs, object, usages)
+	elseif modmapfmt == "msvc" then
+		return ModuleMapContentMSVC(modFiles, locs, object, usages)
+	end
+
+	printError("Unknown modmapfmt: " .. modmapfmt)
+	os.exit(1)
 end
 
 function collate_modules.CollateModules()
@@ -412,31 +807,65 @@ function collate_modules.CollateModules()
 		end
 	end
 
-	local moduleLocations = { RootDirectory = "", BMILocationForModule = nil }
-	moduleLocations.RootDirectory = "."
-	moduleLocations.BMILocationForModule = function(modFiles, logicalName)
-		local m = modFiles[logicalName]
-		if m then
-			return m.BMIPath
-		end
-
-		return nil
-	end
+	local moduleLocations = { RootDirectory = "." }
 
 	--Insert information about the current target's modules.
 	if modmapfmt then
 		local cycleModules = moduleUsageSeed(modFiles, moduleLocations, objects, usages)
-		if cycleModules then
-			printError("Circular dependency detected in the C++ module import graph. See modules names: \"" .. table.concat(cycleModules, "\", \"") .. "\"")
+		if #cycleModules ~= 0 then
+			printError("Circular dependency detected in the C++ module import graph. See modules named: \"" .. table.concat(cycleModules, "\", \"") .. "\"")
 			os.exit(1)
 		end
 	end
 
-	--TODO
+	local dynDepStr = "ninja_dyndep_version = 1.0\n"
 
-	local NinjaDynDepFile = generateNinjaDynDepFile()
-	printDebug(NinjaDynDepFile)
-	io.writefile(dd, NinjaDynDepFile)
+	local ninjaBuild =
+	{
+		Comment = "",
+		Rule = "dyndep",
+		Outputs = {},
+		ImplicitOuts = {},
+		WorkDirOuts = {},
+		ExplicitDeps = {},
+		ImplicitDeps = {},
+		OrderOnlyDeps = {},
+		Variables = {},
+		RspFile = ""
+	}
+	table.insert(ninjaBuild.Outputs, "")
+	for _, object in pairs(objects) do
+		ninjaBuild.Outputs[1] = object.PrimaryOutput
+		ninjaBuild.ImplicitOuts = {}
+		for _1, provide in pairs(object.Provides) do
+			local implicitOut = modFiles[provide.LogicalName].BMIPath
+			--Ignore the 'provides' when the BMI is the output.
+			if implicitOut ~= ninjaBuild.Outputs[1] then
+				table.insert(ninjaBuild.ImplicitOuts, implicitOut)
+			end
+		end
+		ninjaBuild.ImplicitDeps = {}
+		for _1, require in pairs(object.Requires) do
+			local mit = modFiles[require.LogicalName]
+			if mit then
+				table.insert(ninjaBuild.ImplicitDeps, mit.BMIPath)
+			end
+		end
+		ninjaBuild.Variables = {}
+		if #object.Provides > 0 then
+			ninjaBuild.Variables["restat"] = "1"
+		end
+
+		if modmapfmt then
+			local mm = ModuleMapContent(modmapfmt, modFiles, moduleLocations, object, usages)
+			io.writefile(object.PrimaryOutput .. ".modmap", mm)
+		end
+
+		dynDepStr = dynDepStr .. Ninja_WriteBuild(ninjaBuild)
+	end
+
+	-- printDebug(dynDepStr)
+	io.writefile(dd, dynDepStr)
 end
 
 include("_preload.lua")
