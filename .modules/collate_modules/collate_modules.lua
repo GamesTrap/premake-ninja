@@ -687,7 +687,7 @@ local function ModuleMapContentGCC(modFiles, locs, object, usages)
 end
 
 local function ModuleMapContentMSVC(modFiles, locs, object, usages)
-	local mm
+	local mm = ""
 
 	--A response file of '-reference NAME=PATH' arguments.
 
