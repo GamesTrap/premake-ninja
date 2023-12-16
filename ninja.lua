@@ -488,7 +488,11 @@ local function compilation_rules(cfg, toolset, pch)
 		p.outln("  deps = gcc")
 		p.outln("")
 		p.outln("rule cxx_module")
-		p.outln("  command = " .. cxx .. " $CXXFLAGS" .. force_include_pch .. " -MT $out -MF $out.d @$DYNDEP_MODULE_MAP_FILE -c -o $out $in")
+		if toolset == p.tools.gcc then
+			p.outln("  command = " .. cxx .. " $CXXFLAGS " .. "-fmodules-ts -fmodule-mapper=$DYNDEP_MODULE_MAP_FILE -fdeps-format=p1689r5 -x c++ " .. force_include_pch .. " -MT $out -MF $out.d -c -o $out $in")
+		else
+			p.outln("  command = " .. cxx .. " $CXXFLAGS" .. force_include_pch .. " -MT $out -MF $out.d @$DYNDEP_MODULE_MAP_FILE -c -o $out $in")
+		end
 		p.outln("  description = cxx_module $out")
 		p.outln("  depfile = $out.d")
 		p.outln("  deps = gcc")
