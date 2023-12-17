@@ -32,6 +32,12 @@ newoption
 	description = "",
 }
 
+newoption
+{
+	trigger = "deps",
+	description = "",
+}
+
 newaction
 {
 	-- Metadata for the command line and help system

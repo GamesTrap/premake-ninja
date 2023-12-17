@@ -14,6 +14,7 @@ local collate_modules = p.modules.collate_modules
 local modmapfmt = _OPTIONS["modmapfmt"]
 local dd = _OPTIONS["dd"]
 local ddis = {}
+local modDeps = {}
 
 local VersionStr = "version"
 local RulesStr = "rules"
@@ -746,6 +747,78 @@ local function ModuleMapContent(modmapfmt, modFiles, locs, object, usages)
 	os.exit(1)
 end
 
+local function LoadModuleDependencies(modDeps, modFiles, usages)
+	if _OPTIONS["deps"] == nil or _OPTIONS["deps"] == "" then
+		return
+	end
+
+	for i = 1, #modDeps do
+		local modDepFile = modDeps[i]
+
+		local modDep = io.readfile(modDepFile)
+		if not modDep or modDep == "" then
+			printError("Failed to open \"" .. modDepFile .. "\" for module information")
+			os.exit(1)
+		end
+
+		local modDepData, error = json.decode(modDep)
+		if not modDepData or error then
+			printError("Failed to parse \"" .. modDepFile .. "\" (" .. error .. ")")
+			os.exit(1)
+		end
+
+		if modDepData == nil then
+			return
+		end
+
+		local targetModules = modDepData["modules"]
+		if targetModules then
+			for moduleName, moduleData in pairs(targetModules) do
+				local bmiPath = moduleData["bmi"]
+				local isPrivate = moduleData["is-private"]
+				modFiles[moduleName] = { BMIPath = bmiPath, IsPrivate = isPrivate }
+			end
+		end
+
+		local targetModulesReferences = modDepData["references"]
+		if targetModulesReferences then
+			for moduleName, moduleData in pairs(targetModulesReferences) do
+				local moduleReference =
+				{
+					Path = "",
+					Method = LookupMethod.ByName
+				}
+
+				local referencePath = moduleData["path"]
+				if referencePath then
+					moduleReference.Path = referencePath
+				end
+
+				local referenceMethod = moduleData["lookup-method"]
+				if referenceMethod then
+					if referenceMethod == "by-name" or referenceMethod == "include-angle" or referenceMethod == "include-quote" then
+						moduleReference.Method = referenceMethod
+					else
+						printError("Unknown lookup method \"" .. referenceMethod .. "\"")
+						os.exit(1)
+					end
+				end
+
+				usages.Reference[moduleName] = moduleReference
+			end
+		end
+
+		local targetModulesUsage = modDepData["usages"]
+		if targetModulesUsage then
+			for moduleName, modules in pairs(targetModulesUsage) do
+				for i = 1, #modules do
+					table.insert(usages.Usage[moduleName], modules[i])
+				end
+			end
+		end
+	end
+end
+
 function collate_modules.CollateModules()
 	if not validateInput() then
 		os.exit(1)
@@ -754,6 +827,8 @@ function collate_modules.CollateModules()
 	local moduleDir = path.getdirectory(dd)
 
 	local ddis = string.explode(_OPTIONS["ddi"], " ")
+
+	local modDeps = string.explode(_OPTIONS["deps"], " ")
 
 	local objects = {}
 	for _, ddiFilePath in pairs(ddis) do
@@ -774,9 +849,12 @@ function collate_modules.CollateModules()
 
 	local moduleExt = getModuleMapExtension(modmapfmt)
 
-	--Map from module name to module file path, if known.
 	local modFiles = {}
 	local targetModules = {}
+
+	LoadModuleDependencies(modDeps, modFiles, usages)
+
+	--Map from module name to module file path, if known.
 	for _, object in pairs(objects) do
 		for _1, provide in pairs(object.Provides) do
 			local mod = ""

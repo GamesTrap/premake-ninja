@@ -605,7 +605,7 @@ local function module_collate_rule(cfg, toolset)
 		os.exit()
 	end
 
-	cmd = cmd .. "--dd=$out --ddi=\"$in\" @$out.rsp"
+	cmd = cmd .. "--dd=$out --ddi=\"$in\" --deps=$MODULE_DEPS @$out.rsp"
 
 	p.outln("rule __module_collate")
 	p.outln("  command = " .. cmd)
@@ -903,8 +903,15 @@ function ninja.generateProjectCfg(cfg)
 		end
 
 		local implicit_inputs = {}
-		local dependencies = {}
 		local vars = {}
+		local dependencies = {}
+		for _, v in pairs(p.config.getlinks(cfg, "dependencies", "object")) do
+			local relDepObjDir = project.getrelative(cfg.workspace, v.objdir)
+			table.insert(dependencies, path.join(relDepObjDir, "CXXModules.json"))
+		end
+
+		table.insert(vars, "MODULE_DEPS = \"" .. table.implode(dependencies, "", "", " ") .. "\"")
+
 		add_build(cfg, outputFile, implicitOutputs, "__module_collate", modulefiles, implicit_inputs, dependencies, vars)
 		p.outln("")
 	end
