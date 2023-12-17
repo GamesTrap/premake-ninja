@@ -818,6 +818,8 @@ function collate_modules.CollateModules()
 		end
 	end
 
+	--Create modmap and dyndep files
+
 	local dynDepStr = "ninja_dyndep_version = 1.0\n"
 
 	local ninjaBuild =
@@ -864,8 +866,34 @@ function collate_modules.CollateModules()
 		dynDepStr = dynDepStr .. Ninja_WriteBuild(ninjaBuild)
 	end
 
-	-- printDebug(dynDepStr)
 	io.writefile(dd, dynDepStr)
+
+	--Create CXXModules.json
+
+	local targetModsFilepath = path.join(path.getdirectory(dd), "CXXModules.json")
+	local targetModuleInfo = {}
+	targetModuleInfo["modules"] = targetModules
+
+	targetModuleInfo["usages"] = {}
+	local targetUsages = targetModuleInfo["usages"]
+	for moduleName, moduleUsages in pairs(usages.Usage) do
+		targetUsages[moduleName] = {}
+		local modUsage = targetUsages[moduleName]
+		for modules, _ in pairs(moduleUsages) do
+			table.insert(modUsage, modules)
+		end
+	end
+
+	targetModuleInfo["references"] = {}
+	local targetReferences = targetModuleInfo["references"]
+	for moduleName, reference in pairs(usages.Reference) do
+		targetReferences[moduleName] = {}
+		local modRef = targetReferences[moduleName]
+		modRef["path"] = reference.Path
+		modRef["lookup-method"] = reference.Method
+	end
+
+	io.writefile(targetModsFilepath, json.encode(targetModuleInfo))
 end
 
 include("_preload.lua")

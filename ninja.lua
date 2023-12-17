@@ -897,8 +897,7 @@ function ninja.generateProjectCfg(cfg)
 		local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
 		local outputFile = obj_dir .. "/CXX.dd"
 
-		local implicitOutputs = {}
-		-- local implicitOutputs = {obj_dir .. "/CXXModules.json"}
+		local implicitOutputs = {obj_dir .. "/CXXModules.json"}
 		for k,v in pairs(modulefiles) do
 			table.insert(implicitOutputs, path.replaceextension(v, "modmap"))
 		end
@@ -962,19 +961,9 @@ function ninja.generateProjectCfg(cfg)
 
 	p.outln("")
 	if #cfg.postbuildcommands > 0 or cfg.postbuildmessage then
-		local output = {}
-		if modulefiles then --TODO Temporary insert module collation in phony step
-			table.insert(output, path.join(obj_dir, "CXX.dd"))
-		end
-		table.insert(output, "postbuild_" .. get_key(cfg))
-		add_build(cfg, key, {}, "phony", output, {}, {}, {})
+		add_build(cfg, key, {}, "phony", {"postbuild_" .. get_key(cfg)}, {}, {}, {})
 	else
-		local output = {}
-		if modulefiles then --TODO Temporary insert module collation in phony step
-			table.insert(output, path.join(obj_dir, "CXX.dd"))
-		end
-		table.insert(output, cfg_output)
-		add_build(cfg, key, {}, "phony", output, {}, {}, {})
+		add_build(cfg, key, {}, "phony", {cfg_output}, {}, {}, {})
 	end
 	p.outln("")
 end
