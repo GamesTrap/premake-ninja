@@ -446,6 +446,11 @@ local function compilation_rules(cfg, toolset, pch)
 		p.outln("  description = cxx $out")
 		p.outln("  deps = msvc")
 		p.outln("")
+		p.outln("rule cxx_module")
+		p.outln("  command = " .. cxx .. " $CXXFLAGS" .. " /nologo /showIncludes @$DYNDEP_MODULE_MAP_FILE /FS -c /Tp$in /Fo$out")
+		p.outln("  description = cxx_module $out")
+		p.outln("  deps = msvc")
+		p.outln("")
 		p.outln("RESFLAGS = " .. all_resflags)
 		p.outln("rule rc")
 		p.outln("  command = " .. rc .. " /nologo /fo$out $in $RESFLAGS")
@@ -486,6 +491,16 @@ local function compilation_rules(cfg, toolset, pch)
 		p.outln("  depfile = $out.d")
 		p.outln("  deps = gcc")
 		p.outln("")
+		p.outln("rule cxx_module")
+		if toolset == p.tools.gcc then
+			p.outln("  command = " .. cxx .. " $CXXFLAGS " .. "-fmodules-ts -fmodule-mapper=$DYNDEP_MODULE_MAP_FILE -fdeps-format=p1689r5 -x c++ " .. force_include_pch .. " -MT $out -MF $out.d -c -o $out $in")
+		else
+			p.outln("  command = " .. cxx .. " $CXXFLAGS" .. force_include_pch .. " -MT $out -MF $out.d @$DYNDEP_MODULE_MAP_FILE -c -o $out $in")
+		end
+		p.outln("  description = cxx_module $out")
+		p.outln("  depfile = $out.d")
+		p.outln("  deps = gcc")
+		p.outln("")
 		p.outln("RESFLAGS = " .. all_resflags)
 		p.outln("rule rc")
 		p.outln("  command = " .. rc .. " -i $in -o $out $RESFLAGS")
@@ -510,6 +525,93 @@ local function custom_command_rule()
 	p.outln("rule custom_command")
 	p.outln("  command = $CUSTOM_COMMAND")
 	p.outln("  description = $CUSTOM_DESCRIPTION")
+	p.outln("")
+end
+
+local function get_module_scanner_name(toolset, toolsetVersion, cfg)
+	local scannerName = nil
+
+	if toolset == p.tools.clang then
+		scannerName = "clang-scan-deps"
+		if toolsetVersion then
+			scannerName = scannerName .. "-" .. toolsetVersion
+		end
+	elseif toolset == p.tools.gcc or toolset == p.tools.msc then
+		scannerName = toolset.gettoolname(cfg, "cxx")
+	end
+
+	return scannerName
+end
+
+local function module_scan_rule(cfg, toolset)
+	local cmd = ""
+
+	local scannerName = get_module_scanner_name(toolset, toolsetVersion, cfg)
+
+	if toolset == p.tools.clang then
+		local _, toolsetVersion = p.tools.canonical(cfg.toolset)
+		local compilerName = toolset.gettoolname(cfg, "cxx")
+
+		cmd = scannerName .. " -format=p1689 -- " .. compilerName .. " $CXXFLAGS -x c++ $in -c -o $OBJ_FILE -MT $DYNDEP_INTERMEDIATE_FILE -MD -MF $DEP_FILE > $DYNDEP_INTERMEDIATE_FILE.tmp && mv $DYNDEP_INTERMEDIATE_FILE.tmp $DYNDEP_INTERMEDIATE_FILE"
+	elseif toolset == p.tools.gcc then
+		cmd = scannerName .. " $CXXFLAGS -E -x c++ $in -MT $DYNDEP_INTERMEDIATE_FILE -MD -MF $DEP_FILE -fmodules-ts -fdeps-file=$DYNDEP_INTERMEDIATE_FILE -fdeps-target=$OBJ_FILE -fdeps-format=p1689r5 -o $PREPROCESSED_OUTPUT_FILE"
+	elseif toolset == p.tools.msc then
+		cmd = scannerName .. " $CXXFLAGS $in -nologo -TP -showIncludes -scanDependencies $DYNDEP_INTERMEDIATE_FILE -Fo$OBJ_FILE"
+	else
+		term.setTextColor(term.errorColor)
+		print("C++20 Modules are only supported with Clang, GCC and MSC!")
+		term.setTextColor(nil)
+		os.exit()
+	end
+
+	p.outln("rule __module_scan")
+	if toolset == p.tools.msc then
+		p.outln("  deps = msvc")
+	else
+		p.outln("  depfile = $DEP_FILE")
+	end
+	p.outln("  command = " .. cmd)
+	p.outln("  description = Scanning $in for C++ dependencies")
+	p.outln("")
+end
+
+local collateModuleScript = nil
+
+local function module_collate_rule(cfg, toolset)
+	if not collateModuleScript then
+		local collateModuleScripts = os.matchfiles(_MAIN_SCRIPT_DIR .. "/.modules/**/collate_modules/collate_modules.lua")
+		if collateModuleScripts == nil or collateModuleScripts[1] == nil then
+			term.setTextColor(term.errorColor)
+			print("Unable to find collate_modules.lua script!")
+			term.setTextColor(nil)
+			os.exit()
+		else
+			collateModuleScript = collateModuleScripts[1]
+		end
+	end
+
+	local cmd = _PREMAKE_COMMAND .. " --file=" .. collateModuleScript .. " collate_modules "
+
+	if toolset == p.tools.clang then
+		cmd = cmd .. "--modmapfmt=clang "
+	elseif toolset == p.tools.gcc then
+		cmd = cmd .. "--modmapfmt=gcc "
+	elseif toolset == p.tools.msc then
+		cmd = cmd .. "--modmapfmt=msvc "
+	else
+		term.setTextColor(term.errorColor)
+		print("C++20 Modules are only supported with Clang, GCC and MSC!")
+		term.setTextColor(nil)
+		os.exit()
+	end
+
+	cmd = cmd .. "--dd=$out --ddi=\"$in\" --deps=$MODULE_DEPS @$out.rsp"
+
+	p.outln("rule __module_collate")
+	p.outln("  command = " .. cmd)
+	p.outln("  description = Generating C++ dyndep file $out")
+	p.outln("  rspfile = $out.rsp")
+	p.outln("  rspfile_content = $in")
 	p.outln("")
 end
 
@@ -541,6 +643,22 @@ local function collect_generated_files(prj, cfg)
 	end,
 	}, false, 1)
 	return generated_files
+end
+
+local function is_module_file(file)
+	local fileEnding = path.getextension(file)
+
+	if _OPTIONS["experimental-modules-scan-all"] and path.iscppfile(file) then
+		return true
+	end
+
+	if fileEnding == ".cxx" or fileEnding == ".cxxm" or fileEnding == ".ixx" or
+	   fileEnding == ".cppm" or fileEnding == ".c++m" or fileEnding == ".ccm" or
+	   fileEnding == ".mpp" then
+		return true
+	end
+
+	return false
 end
 
 local function pch_build(cfg, pch)
@@ -589,13 +707,26 @@ local function compile_file_build(cfg, filecfg, toolset, pch_dependency, regular
 		end
 		add_build(cfg, objfilename, {}, "cc", {filepath}, pch_dependency, regular_file_dependencies, cflags)
 	elseif shouldcompileascpp(filecfg) then
-		local objfilename = obj_dir .. "/" .. filecfg.objname .. (toolset.objectextension or ".o")
+		local objfilename = obj_dir .. "/" .. filecfg.objname .. path.getextension(filecfg.path) .. (toolset.objectextension or ".o")
 		objfiles[#objfiles + 1] = objfilename
 		local cxxflags = {}
 		if has_custom_settings then
 			cxxflags = {"CXXFLAGS = $CXXFLAGS " .. getcxxflags(toolset, cfg, filecfg)}
 		end
-		add_build(cfg, objfilename, {}, "cxx", {filepath}, pch_dependency, regular_file_dependencies, cxxflags)
+
+		local rule = "cxx"
+		local regFileDeps = table.arraycopy(regular_file_dependencies)
+		if _OPTIONS["experimental-enable-cxx-modules"] and is_module_file(filecfg.name) then
+			rule = "cxx_module"
+			local dynDepModMapFile = objfilename .. ".modmap"
+			local dynDepFile = path.join(obj_dir, "CXX.dd")
+			table.insert(cxxflags, "DYNDEP_MODULE_MAP_FILE = " .. dynDepModMapFile)
+			table.insert(cxxflags, "dyndep = " .. dynDepFile)
+			table.insert(regFileDeps, dynDepFile)
+			table.insert(regFileDeps, dynDepModMapFile)
+		end
+
+		add_build(cfg, objfilename, {}, rule, {filepath}, pch_dependency, regFileDeps, cxxflags)
 	elseif path.isresourcefile(filecfg.abspath) then
 		local objfilename = obj_dir .. "/" .. filecfg.name .. ".res"
 		objfiles[#objfiles + 1] = objfilename
@@ -637,6 +768,45 @@ local function files_build(prj, cfg, toolset, pch_dependency, regular_file_depen
 	p.outln("")
 
 	return objfiles
+end
+
+local function scan_module_file_build(cfg, filecfg, toolset, modulefiles)
+	local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
+	local filepath = project.getrelative(cfg.workspace, filecfg.abspath)
+	local has_custom_settings = fileconfig.hasFileSettings(filecfg)
+
+	local outputFilebase = obj_dir .. "/" .. filecfg.name
+	local dyndepfilename = outputFilebase .. toolset.objectextension .. ".ddi"
+	modulefiles[#modulefiles + 1] = dyndepfilename
+
+	local vars = {}
+	table.insert(vars, "DEP_FILE = " .. outputFilebase .. toolset.objectextension .. ".ddi.d")
+	table.insert(vars, "DYNDEP_INTERMEDIATE_FILE = " .. dyndepfilename)
+	table.insert(vars, "OBJ_FILE = " .. outputFilebase .. toolset.objectextension)
+	table.insert(vars, "PREPROCESSED_OUTPUT_FILE = " .. outputFilebase .. toolset.objectextension .. ".ddi.i")
+
+	add_build(cfg, dyndepfilename, {}, "__module_scan", {filepath}, {}, {}, vars)
+end
+
+local function files_scan_modules(prj, cfg, toolset)
+	local modulefiles = {}
+	tree.traverse(project.getsourcetree(prj), {
+	onleaf = function(node, depth)
+		if not is_module_file(node.name) then
+			return
+		end
+
+		local filecfg = fileconfig.getconfig(node, cfg)
+		if not filecfg or filecfg.flags.ExcludeFromBuild then
+			return
+		end
+
+		scan_module_file_build(cfg, filecfg, toolset, modulefiles)
+	end,
+	}, false, 1)
+	p.outln("")
+
+	return modulefiles
 end
 
 local function generated_files_build(cfg, generated_files, key)
@@ -708,9 +878,45 @@ function ninja.generateProjectCfg(cfg)
 	postbuild_rule(cfg)
 	compilation_rules(cfg, toolset, pch)
 	custom_command_rule()
+	if _OPTIONS["experimental-enable-cxx-modules"] then
+		module_scan_rule(cfg, toolset)
+		module_collate_rule(cfg, toolset)
+	end
+
+	local modulefiles = nil
+	if _OPTIONS["experimental-enable-cxx-modules"] then
+	---------------------------------------------------- scan all module files
+		p.outln("# scan modules")
+		modulefiles = files_scan_modules(prj, cfg, toolset)
+	end
+
+	if _OPTIONS["experimental-enable-cxx-modules"] and modulefiles then
+		---------------------------------------------------- collate all scanned module files
+		p.outln("# collate modules")
+
+		local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
+		local outputFile = obj_dir .. "/CXX.dd"
+
+		local implicitOutputs = {obj_dir .. "/CXXModules.json"}
+		for k,v in pairs(modulefiles) do
+			table.insert(implicitOutputs, path.replaceextension(v, "modmap"))
+		end
+
+		local implicit_inputs = {}
+		local vars = {}
+		local dependencies = {}
+		for _, v in pairs(p.config.getlinks(cfg, "dependencies", "object")) do
+			local relDepObjDir = project.getrelative(cfg.workspace, v.objdir)
+			table.insert(dependencies, path.join(relDepObjDir, "CXXModules.json"))
+		end
+
+		table.insert(vars, "MODULE_DEPS = \"" .. table.implode(dependencies, "", "", " ") .. "\"")
+
+		add_build(cfg, outputFile, implicitOutputs, "__module_collate", modulefiles, implicit_inputs, dependencies, vars)
+		p.outln("")
+	end
 
 	---------------------------------------------------- build all files
-	p.outln("# build files")
 
 	local pch_dependency = pch_build(cfg, pch)
 
@@ -719,6 +925,7 @@ function ninja.generateProjectCfg(cfg)
 	local regular_file_dependencies = table.join(iif(#generated_files > 0, {"generated_files_" .. key}, {}), file_dependencies)
 
 	local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
+	p.outln("# build files")
 	local objfiles = files_build(prj, cfg, toolset, pch_dependency, regular_file_dependencies, file_dependencies)
 	local final_dependency = generated_files_build(cfg, generated_files, key)
 
