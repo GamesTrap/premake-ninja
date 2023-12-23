@@ -683,7 +683,7 @@ local function pch_build(cfg, pch, toolset)
 			add_build(cfg, pchObj, pch_dependency, "build_pch", {pch.inputSrc}, {}, {}, {})
 		else
 			pch_dependency = { pch.gch }
-			add_build(cfg, pch_dependency, {}, "build_pch", {pch.input}, {}, {}, {})
+			add_build(cfg, pch.gch, {}, "build_pch", {pch.input}, {}, {}, {})
 		end
 	end
 	return pch_dependency
