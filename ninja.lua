@@ -434,20 +434,30 @@ local function compilation_rules(cfg, toolset, pch)
 	local all_resflags = getresflags(toolset, cfg, cfg)
 
 	if toolset == p.tools.msc then
+		local force_include_pch = ""
+		if pch then
+			force_include_pch = " /Yu" .. ninja.shesc(path.getname(pch.input)) .. " /Fp" .. ninja.shesc(pch.pch)
+			p.outln("rule build_pch")
+			p.outln("  command = " .. iif(cfg.language == "C", cc .. all_cflags, cxx .. all_cxxflags) .. " /Yc"  .. ninja.shesc(path.getname(pch.input)) .. " /Fp" .. ninja.shesc(pch.pch) .. " /nologo /showIncludes -c /Tp$in /Fo$out")
+			p.outln("  description = build_pch $out")
+			p.outln("  deps = msvc")
+			p.outln("")
+		end
+
 		p.outln("CFLAGS=" .. all_cflags)
 		p.outln("rule cc")
-		p.outln("  command = " .. cc .. " $CFLAGS" .. " /nologo /showIncludes -c /Tc$in /Fo$out")
+		p.outln("  command = " .. cc .. " $CFLAGS" .. force_include_pch .. " /nologo /showIncludes -c /Tc$in /Fo$out")
 		p.outln("  description = cc $out")
 		p.outln("  deps = msvc")
 		p.outln("")
 		p.outln("CXXFLAGS=" .. all_cxxflags)
 		p.outln("rule cxx")
-		p.outln("  command = " .. cxx .. " $CXXFLAGS" .. " /nologo /showIncludes -c /Tp$in /Fo$out")
+		p.outln("  command = " .. cxx .. " $CXXFLAGS" .. force_include_pch .. " /nologo /showIncludes -c /Tp$in /Fo$out")
 		p.outln("  description = cxx $out")
 		p.outln("  deps = msvc")
 		p.outln("")
 		p.outln("rule cxx_module")
-		p.outln("  command = " .. cxx .. " $CXXFLAGS" .. " /nologo /showIncludes @$DYNDEP_MODULE_MAP_FILE /FS -c /Tp$in /Fo$out")
+		p.outln("  command = " .. cxx .. " $CXXFLAGS" .. force_include_pch .. " /nologo /showIncludes @$DYNDEP_MODULE_MAP_FILE /FS -c /Tp$in /Fo$out")
 		p.outln("  description = cxx_module $out")
 		p.outln("  deps = msvc")
 		p.outln("")
@@ -661,11 +671,20 @@ local function is_module_file(file)
 	return false
 end
 
-local function pch_build(cfg, pch)
+local function pch_build(cfg, pch, toolset)
 	local pch_dependency = {}
 	if pch then
-		pch_dependency = { pch.gch }
-		add_build(cfg, pch.gch, {}, "build_pch", {pch.input}, {}, {}, {})
+		if toolset == p.tools.msc then
+			pch_dependency = { pch.pch }
+
+			local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
+			local pchObj = obj_dir .. "/" .. path.getname(pch.inputSrc) .. (toolset.objectextension or ".o")
+
+			add_build(cfg, pchObj, pch_dependency, "build_pch", {pch.inputSrc}, {}, {}, {})
+		else
+			pch_dependency = { pch.gch }
+			add_build(cfg, pch_dependency, {}, "build_pch", {pch.input}, {}, {}, {})
+		end
 	end
 	return pch_dependency
 end
@@ -740,12 +759,22 @@ end
 
 local function files_build(prj, cfg, toolset, pch_dependency, regular_file_dependencies, file_dependencies)
 	local objfiles = {}
+	local obj_dir = project.getrelative(cfg.workspace, cfg.objdir)
+
 	tree.traverse(project.getsourcetree(prj), {
 	onleaf = function(node, depth)
 		local filecfg = fileconfig.getconfig(node, cfg)
 		if not filecfg or filecfg.flags.ExcludeFromBuild then
 			return
 		end
+
+		-- Compiling PCH on MSVC is handled via build_pch build rule
+		if toolset == p.tools.msc and cfg.pchsource and cfg.pchsource == node.abspath then
+			local objfilename = obj_dir .. "/" .. path.getname(node.path) .. (toolset.objectextension or ".o")
+			objfiles[#objfiles + 1] = objfilename
+			return
+		end
+
 		local rule = p.global.getRuleForFile(node.name, prj.rules)
 		local filepath = project.getrelative(cfg.workspace, node.abspath)
 
@@ -859,16 +888,15 @@ function ninja.generateProjectCfg(cfg)
 	p.outln("")
 
 	---------------------------------------------------- figure out settings
-	local pch = nil
-	if toolset ~= p.tools.msc then
-		pch = p.tools.gcc.getpch(cfg)
-		if pch then
-			pch = {
-				input = project.getrelative(cfg.workspace, path.join(cfg.location, pch)),
-				placeholder = project.getrelative(cfg.workspace, path.join(cfg.objdir, path.getname(pch))),
-				gch = project.getrelative(cfg.workspace, path.join(cfg.objdir, path.getname(pch) .. ".gch"))
-			}
-		end
+	local pch = p.tools.gcc.getpch(cfg)
+	if pch then
+		pch = {
+			input = project.getrelative(cfg.workspace, path.join(cfg.location, pch)),
+			inputSrc = project.getrelative(cfg.workspace, path.join(cfg.location, cfg.pchsource)),
+			placeholder = project.getrelative(cfg.workspace, path.join(cfg.objdir, path.getname(pch))),
+			gch = project.getrelative(cfg.workspace, path.join(cfg.objdir, path.getname(pch) .. ".gch")),
+			pch = project.getrelative(cfg.workspace, path.join(cfg.objdir, path.getname(pch) .. ".pch"))
+		}
 	end
 
 	---------------------------------------------------- write rules
@@ -918,7 +946,7 @@ function ninja.generateProjectCfg(cfg)
 
 	---------------------------------------------------- build all files
 
-	local pch_dependency = pch_build(cfg, pch)
+	local pch_dependency = pch_build(cfg, pch, toolset)
 
 	local generated_files = collect_generated_files(prj, cfg)
 	local file_dependencies = getFileDependencies(cfg)
