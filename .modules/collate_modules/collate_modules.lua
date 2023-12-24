@@ -826,9 +826,9 @@ function collate_modules.CollateModules()
 
 	local moduleDir = path.getdirectory(dd)
 
-	local ddis = string.explode(_OPTIONS["ddi"], " ")
+	local ddis = iif(#_OPTIONS["ddi"] > 0, string.explode(_OPTIONS["ddi"], " "), {})
 
-	local modDeps = string.explode(_OPTIONS["deps"], " ")
+	local modDeps = iif(#_OPTIONS["deps"] > 0, string.explode(_OPTIONS["deps"], " "), {})
 
 	local objects = {}
 	for _, ddiFilePath in pairs(ddis) do
