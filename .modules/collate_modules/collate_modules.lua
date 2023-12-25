@@ -812,6 +812,10 @@ local function LoadModuleDependencies(modDeps, modFiles, usages)
 		if targetModulesUsage then
 			for moduleName, modules in pairs(targetModulesUsage) do
 				for i = 1, #modules do
+					if not usages.Usage[moduleName] then
+						usages.Usage[moduleName] = {}
+					end
+
 					table.insert(usages.Usage[moduleName], modules[i])
 				end
 			end
