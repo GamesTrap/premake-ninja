@@ -8,6 +8,18 @@
 
 local p = premake
 
+newoption
+{
+	trigger = "experimental-enable-cxx-modules",
+	description = "Enable C++20 Modules support. This adds code scanning and collation step to the Ninja build."
+}
+
+newoption
+{
+	trigger = "experimental-modules-scan-all",
+	description = "Enable scanning for all C++ translation units. By default only files ending with .cxx, .cxxm, .ixx, .cppm, .c++m, .ccm and .mpp are scanned."
+}
+
 newaction
 {
 	-- Metadata for the command line and help system
