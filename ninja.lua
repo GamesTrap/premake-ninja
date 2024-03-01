@@ -622,6 +622,10 @@ local function module_collate_rule(cfg, toolset)
 	p.outln("  description = Generating C++ dyndep file $out")
 	p.outln("  rspfile = $out.rsp")
 	p.outln("  rspfile_content = $in")
+	-- Ninja's collator only writes outputs if contents actually change.
+	-- Avoid running dependent jobs if the contents don't change by telling ninja to
+	-- check the timestamp again.
+	p.outln("  restat = 1")
 	p.outln("")
 end
 

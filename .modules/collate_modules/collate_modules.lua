@@ -56,6 +56,22 @@ local function validateInput()
 	return true
 end
 
+-- Checks if a file differs from the given data
+local function DoesFileDiffer(file, data)
+	local f = io.open(file, "rb")
+
+	-- File doesnt exists or an error happened.
+	if not f then
+		return true
+	end
+
+	local fileContent = f:read("*a")
+
+	f:close()
+
+	return fileContent ~= data
+end
+
 LookupMethod =
 {
 	ByName = "by-name",
@@ -942,7 +958,10 @@ function collate_modules.CollateModules()
 
 		if modmapfmt then
 			local mm = ModuleMapContent(modmapfmt, modFiles, moduleLocations, object, usages)
-			io.writefile(object.PrimaryOutput .. ".modmap", mm)
+			local modmapPath = object.PrimaryOutput .. ".modmap"
+			if DoesFileDiffer(modmapPath, mm) then
+				io.writefile(modmapPath, mm)
+			end
 		end
 
 		dynDepStr = dynDepStr .. Ninja_WriteBuild(ninjaBuild)
@@ -975,7 +994,10 @@ function collate_modules.CollateModules()
 		modRef["lookup-method"] = reference.Method
 	end
 
-	io.writefile(targetModsFilepath, json.encode(targetModuleInfo))
+	local jsonTargetModuleData = json.encode(targetModuleInfo)
+	if DoesFileDiffer(targetModsFilepath, jsonTargetModuleData) then
+		io.writefile(targetModsFilepath, jsonTargetModuleData)
+	end
 end
 
 include("_preload.lua")
