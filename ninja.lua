@@ -482,7 +482,7 @@ local function compilation_rules(cfg, toolset, pch)
 		if pch then
 			force_include_pch = " -include " .. ninja.shesc(pch.placeholder)
 			p.outln("rule build_pch")
-			p.outln("  command = " .. iif(cfg.language == "C", cc .. all_cflags .. " -x c-header", cxx .. all_cxxflags .. " -x c++-header")  .. " -H -MF $out.d -c -o $out $in")
+			p.outln("  command = " .. iif(cfg.language == "C", cc .. all_cflags .. " -x c-header", cxx .. all_cxxflags .. " -x c++-header")  .. " -MF $out.d -c -o $out $in")
 			p.outln("  description = build_pch $out")
 			p.outln("  depfile = $out.d")
 			p.outln("  deps = gcc")
