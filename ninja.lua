@@ -562,7 +562,19 @@ local function module_scan_rule(cfg, toolset)
 		local _, toolsetVersion = p.tools.canonical(cfg.toolset)
 		local compilerName = toolset.gettoolname(cfg, "cxx")
 
-		cmd = scannerName .. " -format=p1689 -- " .. compilerName .. " $CXXFLAGS -x c++ $in -c -o $OBJ_FILE -MT $DYNDEP_INTERMEDIATE_FILE -MD -MF $DEP_FILE > $DYNDEP_INTERMEDIATE_FILE.tmp && mv $DYNDEP_INTERMEDIATE_FILE.tmp $DYNDEP_INTERMEDIATE_FILE"
+		libcppPath, libcppError = os.outputof(compilerName .. " -print-resource-dir")
+		if libcppError ~= 0 then
+			term.setTextColor(term.errorColor)
+			print("Failed to find path to system headers!")
+			term.setTextColor(term.warningColor)
+			print("Using automatic system header discovery, this may use incorrect paths")
+			term.setTextColor(nil)
+			libcppPath = ""
+		else
+			libcppPath = " -resource-dir " .. libcppPath .. " "
+		end
+
+		cmd = scannerName .. " -format=p1689 -- " .. compilerName .. libcppPath .. " $CXXFLAGS -x c++ $in -c -o $OBJ_FILE -MT $DYNDEP_INTERMEDIATE_FILE -MD -MF $DEP_FILE > $DYNDEP_INTERMEDIATE_FILE.tmp && mv $DYNDEP_INTERMEDIATE_FILE.tmp $DYNDEP_INTERMEDIATE_FILE"
 	elseif toolset == p.tools.gcc then
 		cmd = scannerName .. " $CXXFLAGS -E -x c++ $in -MT $DYNDEP_INTERMEDIATE_FILE -MD -MF $DEP_FILE -fmodules-ts -fdeps-file=$DYNDEP_INTERMEDIATE_FILE -fdeps-target=$OBJ_FILE -fdeps-format=p1689r5 -o $PREPROCESSED_OUTPUT_FILE"
 	elseif toolset == p.tools.msc then
