@@ -19,83 +19,53 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
-    - name: Checkout premake5
-      uses: actions/checkout@v3
-      with:
-          repository: premake/premake-core
-          path: .bins/premake-build
-    - name: Install uuid-dev
+      uses: actions/checkout@v5
+    - name: Install premake5
+      uses: Jarod42/install-premake5@v6
+    - name: Update Ubuntu packages list
+      run: sudo apt-get update -y
+    - name: Install ninja
       run: |
-        sudo apt -y install uuid-dev
-    - name: Build premake5
-      run: |
-        cd .bins/premake-build
-        make -f Bootstrap.mak linux CONFIG=release
-        cp bin/release/premake5 ../
-        cd ..
-        rm -Rf premake-build
-    - name: Install latest ninja-build
-      run: |
-        sudo wget -qO /usr/local/bin/ninja.gz https://github.com/ninja-build/ninja/releases/latest/download/ninja-linux.zip
-        sudo gunzip -f /usr/local/bin/ninja.gz
-        sudo chmod a+x /usr/local/bin/ninja
+        sudo apt-get install -y ninja-build
     - name: Versions
       run: |
         python --version
-        .bins/premake5 --version
+        premake5 --version
         ninja --version
     - name: Run tests
-      run: cd tests && PATH=$PATH:`pwd`/../.bins python run_tests.py
+      run: cd tests && python run_tests.py
   windows:
     runs-on: windows-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
-    - name: Checkout premake5
-      uses: actions/checkout@v3
-      with:
-          repository: premake/premake-core
-          path: .bins/premake-build
-    - name: Build premake5
-      run: |
-        $vcvarall_path = vswhere -find VC\Auxiliary\Build\vcvarsall.bat
-        cmd.exe /c "call ""$vcvarall_path"" x86_amd64 && cd .bins/premake-build && nmake -f Bootstrap.mak MSDEV=vs2022 windows-msbuild PLATFORM=Win32 CONFIG=release && cp bin/release/premake5.exe ../"
+      uses: actions/checkout@v5
+    - name: Install premake5
+      uses: Jarod42/install-premake5@v6
     - name: Install ninja
-      uses: seanmiddleditch/gha-setup-ninja@v4
+      uses: seanmiddleditch/gha-setup-ninja@v6
     - name: Versions
       run: |
         python --version
-        .bins/premake5 --version
+        premake5 --version
         ninja --version
     - name: Add cl.exe to PATH
       uses: ilammy/msvc-dev-cmd@v1
     - name: Run tests
-      run: cd tests && PATH=$PATH:`pwd`/../.bins python run_tests.py
+      run: cd tests && python run_tests.py
       shell: bash
   macos:
     runs-on: macos-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
-    - name: Checkout premake5
-      uses: actions/checkout@v3
-      with:
-          repository: premake/premake-core
-          path: .bins/premake-build
-    - name: Build premake5
-      run: |
-        cd .bins/premake-build
-        make -f Bootstrap.mak osx CONFIG=release
-        cp bin/release/premake5 ../
-        cd ..
-        rm -Rf premake-build
+      uses: actions/checkout@v5
+    - name: Install premake5
+      uses: Jarod42/install-premake5@v6
     - name: Install ninja
-      uses: seanmiddleditch/gha-setup-ninja@v4
+      uses: seanmiddleditch/gha-setup-ninja@v6
     - name: Versions
       run: |
         python --version
-        .bins/premake5 --version
+        premake5 --version
         ninja --version
     - name: Run tests
-      run: cd tests && PATH=$PATH:`pwd`/../.bins python run_tests.py
+      run: cd tests && python run_tests.py
