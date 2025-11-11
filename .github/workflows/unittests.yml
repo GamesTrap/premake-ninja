@@ -25,6 +25,9 @@ jobs:
       with:
           repository: premake/premake-core
           path: .bins/premake-build
+    - name: Install uuid-dev
+      run: |
+        sudo apt -y install uuid-dev
     - name: Build premake5
       run: |
         cd .bins/premake-build
