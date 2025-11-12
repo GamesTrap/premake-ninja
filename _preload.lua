@@ -34,7 +34,7 @@ newaction
 	valid_languages	= {"C", "C++"},
 	valid_tools		= {cc = { "gcc", "clang", "msc" }},
 
-	toolset = iif(os.target() == "windows", "msc-v143",
+	toolset = iif(os.target() == "windows", "msc-v143", --msc-v143 = Microsoft Visual Studio 2022
 			  iif(os.target() == "macosx", "clang", "gcc")),
 
 	-- Workspace and project generation logic
@@ -63,7 +63,6 @@ newaction
 		-- TODO
 	end,
 }
-
 
 --
 -- Decide when the full module should be loaded.
