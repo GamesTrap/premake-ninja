@@ -324,7 +324,13 @@ local function getCXXFlags(toolset, cfg, filecfg)
 end
 
 local function getLDFlags(toolset, cfg)
-	local ldflags = list(table.join(toolset.getLibraryDirectories(cfg), toolset.getrunpathdirs(cfg, table.join(cfg.runpathdirs, config.getsiblingtargetdirs(cfg))), toolset.getldflags(cfg), cfg.linkoptions))
+	-- Ninja requires that all files are relative to the build dir
+	local oldCfgProjectDir = cfg.project.location
+	cfg.project.location = cfg.workspace.location
+	local libdirs = toolset.getLibraryDirectories(cfg)
+	cfg.project.location = oldCfgProjectDir
+
+	local ldflags = list(table.join(libdirs, toolset.getrunpathdirs(cfg, table.join(cfg.runpathdirs, config.getsiblingtargetdirs(cfg))), toolset.getldflags(cfg), cfg.linkoptions))
 
 	if cfg.entrypoint ~= nil and toolset == p.tools.msc then
 		ldflags = ldflags .. " /ENTRY:" .. cfg.entrypoint
