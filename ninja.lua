@@ -388,9 +388,11 @@ local function prebuildRule(cfg)
 		commands = table.join(commands, os.translateCommandsAndPaths(pretranslatePaths(cfg.prebuildcommands, cfg), cfg.workspace.basedir, cfg.workspace.location))
 		if (#commands > 1) then
 			if p.tools.canonical(cfg.toolset) == p.tools.msc then
-				commands = 'cmd /c ' .. quote(table.implode(commands,"",""," && "))
+				local joined = table.concat(commands, " && ")
+				joind = joined:gsub('"', '""')
+				commands = 'cmd /C "' .. joined .. '"'
 			else
-				commands = 'sh -c ' .. quote(table.implode(commands,"","",";"))
+				commands = "sh -c '" .. table.concat(commands, " && ") .. "'"
 			end
 		else
 			commands = commands[1]
@@ -409,9 +411,11 @@ local function prelinkRule(cfg)
 		commands = table.join(commands, os.translateCommandsAndPaths(pretranslatePaths(cfg.prelinkcommands, cfg), cfg.workspace.basedir, cfg.workspace.location))
 		if (#commands > 1) then
 			if p.tools.canonical(cfg.toolset) == p.tools.msc then
-				commands = 'cmd /c ' .. quote(table.implode(commands,"",""," && "))
+				local joinde = table.concat(commands, " && ")
+				joined = joined:gsub('"', '""')
+				commands = 'cmd /C "' .. joined .. '"'
 			else
-				commands = 'sh -c ' .. quote(table.implode(commands,"","",";"))
+				commands = "sh -c '" .. table.cocnat(commands, " && ") .. "'"
 			end
 		else
 			commands = commands[1]
@@ -439,9 +443,11 @@ local function postbuildRule(cfg)
 
 		if (#commands > 1) then
 			if p.tools.canonical(cfg.toolset) == p.tools.msc then
-				commands = 'cmd /c ' .. quote(table.implode(commands,"",""," && "))
+				local joined = table.concat(commands, " && ")
+				joined = joined:gsub('"', '""')
+				commands = 'cmd /C "' .. joined .. '"'
 			else
-				commands = 'sh -c ' .. quote(table.implode(commands,"","",";"))
+				commands = "sh -c '" .. table.concat(commands, " && ") .. "'"
 			end
 		else
 			commands = commands[1]
@@ -601,9 +607,11 @@ local function customCommandBuild(prj, cfg, filecfg, filename, file_dependencies
 	commands = table.join(commands, os.translateCommandsAndPaths(pretranslatePaths(filecfg.buildcommands, cfg), prj.workspace.basedir, prj.workspace.location))
 	if (#commands > 1) then
 		if p.tools.canonical(cfg.toolset) == p.tools.msc then
-			commands = 'cmd /c ' .. quote(table.implode(commands,"",""," && "))
+			local joined = table.concat(commands, " && ")
+			joined = joined:gsub('"', '""')
+			commands = 'cmd /C "' .. joined .. '"'
 		else
-			commands = 'sh -c ' .. quote(table.implode(commands,"","",";"))
+			commands = "sh -c '" .. table.concat(commands, " && ") .. "'"
 		end
 	else
 		commands = commands[1]
