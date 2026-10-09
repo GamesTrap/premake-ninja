@@ -294,6 +294,17 @@ local function getFileDependencies(cfg)
 	return dependencies
 end
 
+-- Ninja requires that all files are relative to the build directory (premakes workspace location).
+-- Premakes toolset functions resolve paths relative to the project location, so we have
+--   to temporarily point it at the workspace location
+local function relativeToWorkspace(cfg, func)
+	local prjLocation = cfg.project.location
+	cfg.project.location = cfg.workspace.location
+	local a, b = func()
+	cfg.project.locaton = projectLocation
+	return a, b
+end
+
 local function getCFlags(toolset, cfg, filecfg)
 	p.escaper(shellEscape)
 
@@ -301,8 +312,8 @@ local function getCFlags(toolset, cfg, filecfg)
 	local cppflags = list(toolset.getcppflags(filecfg))
 	local cflags = list(toolset.getcflags(filecfg))
 	local defines = list(table.join(toolset.getdefines(filecfg.defines, filecfg), toolset.getundefines(filecfg.undefines)))
-	local includes = list(toolset.getincludedirs(cfg, filecfg.includedirs, filecfg.externalincludedirs, filecfg.frameworkdirs, filecfg.includedirsafter))
-	local forceincludes = list(toolset.getforceincludes(cfg))
+	local includes = relativeToWorkspace(cfg, function() return list(toolset.getincludedirs(cfg, filecfg.includedirs, filecfg.externalincludedirs, filecfg.frameworkdirs, filecfg.includedirsafter)) end)
+	local forceincludes = relativeToWorkspace(cfg, function() return list(toolset.getforceincludes(cfg)) end)
 	p.escaper(nil)
 
 	return buildopt .. cppflags .. cflags .. defines .. includes .. forceincludes
@@ -314,8 +325,8 @@ local function getCXXFlags(toolset, cfg, filecfg)
 	local cppflags = list(toolset.getcppflags(filecfg))
 	local cxxflags = list(toolset.getcxxflags(filecfg))
 	local defines = list(table.join(toolset.getdefines(filecfg.defines, filecfg), toolset.getundefines(filecfg.undefines)))
-	local includes = list(toolset.getincludedirs(cfg, filecfg.includedirs, filecfg.externalincludedirs, filecfg.frameworkdirs, filecfg.includedirsafter))
-	local forceincludes = list(toolset.getforceincludes(cfg))
+	local includes = relativeToWorkspace(cfg, function() return list(toolset.getincludedirs(cfg, filecfg.includedirs, filecfg.externalincludedirs, filecfg.frameworkdirs, filecfg.includedirsafter)) end)
+	local forceincludes = relativeToWorkspace(cfg, function() return list(toolset.getforceincludes(cfg)) end)
 	p.escaper(nil)
 
 	return buildopt .. cppflags .. cxxflags .. defines .. includes .. forceincludes
@@ -345,7 +356,7 @@ end
 local function getResFlags(toolset, cfg, filecfg)
 	p.escaper(shellEscape)
 	local defines = list(toolset.getdefines(table.join(filecfg.defines, filecfg.resdefines), filecfg))
-	local includes = list(toolset.getincludedirs(cfg, table.join(filecfg.externalincludedirs, filecfg.includedirsafter, filecfg.includedirs, filecfg.resincludedirs), {}, {}, {}))
+	local includes = relativeToWorkspace(cfg, function() return list(toolset.getincludedirs(cfg, table.join(filecfg.externalincludedirs, filecfg.includedirsafter, filecfg.includedirs, filecfg.resincludedirs), {}, {}, {})) end)
 	local options = list(cfg.resoptions)
 	p.escaper(nil)
 
