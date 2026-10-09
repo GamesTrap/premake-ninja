@@ -4,7 +4,7 @@
 -- Author:      Dmitry Ivanov
 -- Modified by: Jan "GamesTrap" Schürkamp
 -- Created:     2015/07/04
--- Updated:     2025/11/11
+-- Updated:     2026/10/09
 -- Copyright:   (c) 2015 Dmitry Ivanov, (c) 2023-2026 Jan "GamesTrap" Schürkamp
 --
 
@@ -212,13 +212,11 @@ function ninja.generateWorkspace(wks)
 				if (cfg_first_lib == nil) and (cfg.kind == p.STATICLIB or cfg.kind == p.SHAREDLIB) then
 					cfg_first_lib = key
 				end
-				if prj.name == wks.startproject then
+				if cfg_first == nil and prj.name == wks.startproject then
 					if wks.defaultplatform == nil then
 						cfg_first = key
 					elseif cfg.platform == wks.defaultplatform then
-						if cfg_first == nil then
-							cfg_first = key
-						end
+						cfg_first = key
 					end
 				end
 
