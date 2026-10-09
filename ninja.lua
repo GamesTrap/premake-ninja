@@ -189,6 +189,7 @@ function ninja.generateWorkspace(wks)
 	p.outln("# build projects")
 	local cfgs = {} -- key is concatenated name or variant name, value is string of outputs names
 	local key = ""
+	local cfgOrder = {} -- build configuration names in declaration order
 	local cfg_first = nil
 	local cfg_first_lib = nil
 	local subninjas = {}
@@ -200,6 +201,7 @@ function ninja.generateWorkspace(wks)
 
 				if not cfgs[cfg.buildcfg] then
 					cfgs[cfg.buildcfg] = {}
+					table.insert(cfgOrder, cfg.buildcfg)
 				end
 				table.insert(cfgs[cfg.buildcfg], key)
 
@@ -234,7 +236,8 @@ function ninja.generateWorkspace(wks)
 	p.outln("")
 
 	p.outln("# targets")
-	for cfg, outputs in spairs(cfgs) do
+	for _, cfg in ipairs(cfgOrder) do
+		local outputs = cfgs[cfg]
 		p.outln("build " .. escape(cfg) .. ": phony" .. list(table.translate(outputs, escape)))
 	end
 	p.outln("")
