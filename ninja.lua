@@ -344,6 +344,10 @@ local function getLDFlags(toolset, cfg)
 
 	local ldflags = list(table.join(libdirs, toolset.getrunpathdirs(cfg, table.join(cfg.runpathdirs, config.getsiblingtargetdirs(cfg))), toolset.getldflags(cfg), cfg.linkoptions))
 
+	-- Make sure every '$' (e.g. $ORIGIN in rpaths) is escaped exactly once for ninja,
+	-- otherwise ninja expands it to an empty string (-Wl,-rpath,'') which swallows the next linker argument.
+	ldflags = ldflags:gsub("%$%$", "$"):gsub("%$", "$$")
+
 	if cfg.entrypoint ~= nil and toolset == p.tools.msc then
 		ldflags = ldflags .. " /ENTRY:" .. cfg.entrypoint
 	end
