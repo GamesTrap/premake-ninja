@@ -192,6 +192,7 @@ function ninja.generateWorkspace(wks)
 	local cfgOrder = {} -- build configuration names in declaration order
 	local cfg_first = nil
 	local cfg_first_lib = nil
+	local cfg_start = nil
 	local subninjas = {}
 
 	for prj in p.workspace.eachproject(wks) do
@@ -205,7 +206,12 @@ function ninja.generateWorkspace(wks)
 				end
 				table.insert(cfgs[cfg.buildcfg], key)
 
-				-- set first configuration name
+				-- set first configuration name (the start project takes precedence)
+				if cfg_start == nil and prj.name == wks.startproject then
+					if wks.defaultplatform == nil or cfg.platform == wks.defaultplatform then
+						cfg_start = key
+					end
+				end
 				if wks.defaultplatform == nil then
 					if (cfg_first == nil) and (cfg.kind == p.CONSOLEAPP or cfg.kind == p.WINDOWEDAPP) then
 						cfg_first = key
@@ -213,13 +219,6 @@ function ninja.generateWorkspace(wks)
 				end
 				if (cfg_first_lib == nil) and (cfg.kind == p.STATICLIB or cfg.kind == p.SHAREDLIB) then
 					cfg_first_lib = key
-				end
-				if cfg_first == nil and prj.name == wks.startproject then
-					if wks.defaultplatform == nil then
-						cfg_first = key
-					elseif cfg.platform == wks.defaultplatform then
-						cfg_first = key
-					end
 				end
 
 				-- include other ninja file
@@ -229,9 +228,7 @@ function ninja.generateWorkspace(wks)
 		end
 	end
 
-	if cfg_first == nil then
-		cfg_first = cfg_first_lib
-	end
+	cfg_first = cfg_start or cfg_first or cfg_first_lib
 
 	p.outln("")
 
